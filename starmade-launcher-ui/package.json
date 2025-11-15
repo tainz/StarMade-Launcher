@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check": "tsc --noEmit",
+    "lint": "echo \"starmade-launcher-ui: no lint configured yet\"",
+    "lint:fix": "echo \"starmade-launcher-ui: no lint:fix configured yet\""
   },
   "dependencies": {
     "react": "^19.2.0",
