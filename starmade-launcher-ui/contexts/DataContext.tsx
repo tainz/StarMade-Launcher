@@ -1,6 +1,6 @@
 // starmade-launcher-ui/contexts/DataContext.tsx
 
-import React, { createContext, useContext, useState, ReactNode, useMemo } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
 import type { DataContextType as OriginalDataContextType, ManagedItem, Version } from '../types';
 import { useUserState } from '../components/hooks/useUserState';
 import { useInstanceServiceState } from '../components/hooks/useInstanceServiceState';
@@ -19,7 +19,6 @@ export interface DataContextType extends OriginalDataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    // --- User State (Live Data from Backend) ---
     const { 
         users, 
         activeUser, 
@@ -30,7 +29,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         error: userError 
     } = useUserState();
 
-    // --- Instance State (Live Data from Backend) ---
     const {
         instances,
         selectedInstancePath,
@@ -44,16 +42,29 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return instances.find(i => i.path === selectedInstancePath) || null;
     }, [instances, selectedInstancePath]);
 
-    // --- Mapped Instances for UI ---
-    const installations = useMemo(() => instances.filter(i => !i.server), [instances]);
-    const servers = useMemo(() => instances.filter(i => !!i.server), [instances]);
+    const mapInstanceToManagedItem = useCallback((i: Instance): ManagedItem => ({
+      id: i.path, // CRITICAL: Use path as id
+      name: i.name,
+      version: i.runtime.minecraft,
+      type: 'release', // This is a simplification
+      icon: i.icon ?? 'release',
+      path: i.path,
+      lastPlayed: i.lastPlayedDate ? new Date(i.lastPlayedDate).toLocaleString() : 'Never',
+      java: i.java,
+      minMemory: i.minMemory,
+      maxMemory: i.maxMemory,
+      vmOptions: i.vmOptions?.join(' '),
+      mcOptions: i.mcOptions?.join(' '),
+      port: i.server?.host,
+    }), []);
+
+    const installations = useMemo(() => instances.filter(i => !i.server).map(mapInstanceToManagedItem), [instances, mapInstanceToManagedItem]);
+    const servers = useMemo(() => instances.filter(i => !!i.server).map(mapInstanceToManagedItem), [instances, mapInstanceToManagedItem]);
     
-    // --- Other State (Still Mocked) ---
     const [versions, setVersions] = useState<Version[]>(versionsData);
     const [selectedVersion, setSelectedVersion] = useState<Version | null>(versionsData[0] || null);
 
-    // --- Data Actions ---
-    const addInstallation = (item: ManagedItem) => {
+    const addInstallation = useCallback((item: ManagedItem) => {
         const options: CreateInstanceOption = {
             name: item.name,
             runtime: {
@@ -62,14 +73,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 fabricLoader: '',
                 quiltLoader: '',
             },
-            path: item.path,
+            // DO NOT PROVIDE PATH! Let the backend generate it.
             icon: item.icon,
+            java: item.java,
+            maxMemory: item.maxMemory,
+            minMemory: item.minMemory,
+            vmOptions: item.vmOptions?.split(' ').filter(v => v),
         };
         createInstance(options);
-    };
-    const updateInstallation = (item: ManagedItem) => {
+    }, [createInstance]);
+
+    const updateInstallation = useCallback((item: ManagedItem) => {
         const options: EditInstanceOptions & { instancePath: string } = {
-            instancePath: item.id, // Assuming item.id is the instance path
+            instancePath: item.id, // This is now correct (it's the path)
             name: item.name,
             runtime: {
                 minecraft: item.version,
@@ -78,12 +94,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 quiltLoader: '',
             },
             icon: item.icon,
+            java: item.java,
+            maxMemory: item.maxMemory,
+            minMemory: item.minMemory,
+            vmOptions: item.vmOptions?.split(' ').filter(v => v),
         };
         editInstance(options);
-    };
-    const deleteInstallation = (id: string) => deleteInstance(id);
+    }, [editInstance]);
+
+    const deleteInstallation = useCallback((id: string) => deleteInstance(id), [deleteInstance]);
     
-    const addServer = (item: ManagedItem) => {
+    const addServer = useCallback((item: ManagedItem) => {
         const options: CreateInstanceOption = {
             name: item.name,
             runtime: {
@@ -92,15 +113,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 fabricLoader: '',
                 quiltLoader: '',
             },
-            path: item.path,
             server: {
                 host: item.port || '127.0.0.1',
             },
             icon: item.icon,
+            java: item.java,
+            maxMemory: item.maxMemory,
+            minMemory: item.minMemory,
+            vmOptions: item.vmOptions?.split(' ').filter(v => v),
         };
         createInstance(options);
-    };
-    const updateServer = (item: ManagedItem) => {
+    }, [createInstance]);
+
+    const updateServer = useCallback((item: ManagedItem) => {
         const options: EditInstanceOptions & { instancePath: string } = {
             instancePath: item.id,
             name: item.name,
@@ -114,17 +139,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 host: item.port || '127.0.0.1',
             },
             icon: item.icon,
+            java: item.java,
+            maxMemory: item.maxMemory,
+            minMemory: item.minMemory,
+            vmOptions: item.vmOptions?.split(' ').filter(v => v),
         };
         editInstance(options);
-    };
-    const deleteServer = (id: string) => deleteInstance(id);
+    }, [editInstance]);
+
+    const deleteServer = useCallback((id: string) => deleteInstance(id), [deleteInstance]);
 
     const getInstallationDefaults = () => ({ ...defaultInstallationData, id: Date.now().toString() });
     const getServerDefaults = () => ({ ...defaultServerData, id: Date.now().toString() });
 
-    // --- Combined Context Value ---
     const value: DataContextType = {
-        // Live User Data
         accounts: users,
         activeAccount: activeUser,
         setActiveAccount: selectUser,
@@ -132,8 +160,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         logout,
         userLoading,
         userError,
-
-        // Live Instance Data
         installations,
         servers,
         selectedInstance,
@@ -146,8 +172,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         deleteServer,
         getInstallationDefaults,
         getServerDefaults,
-
-        // Mocked Data
         versions,
         selectedVersion,
         setSelectedVersion,

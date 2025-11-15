@@ -48,8 +48,13 @@ export const defaultInstallationData: ManagedItem = {
   version: '0.203.175',
   type: 'release',
   icon: 'release',
-  path: 'C:\\Games\\StarMade\\Instances\\new-installation',
+  path: '',
   lastPlayed: 'Never',
+  java: '',
+  minMemory: undefined,
+  maxMemory: 4096,
+  vmOptions: '',
+  mcOptions: '',
 };
 
 export const initialServersData: ManagedItem[] = [
@@ -91,7 +96,12 @@ export const defaultServerData: ManagedItem = {
   version: '0.203.175',
   type: 'release',
   icon: 'server',
-  path: 'C:\\Games\\StarMade\\Servers\\new-server',
+  path: '',
   lastPlayed: 'Never',
   port: '4242',
+  java: '',
+  minMemory: undefined,
+  maxMemory: 4096,
+  vmOptions: '',
+  mcOptions: '',
 };

@@ -26,6 +26,8 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
         updateServer,
         getInstallationDefaults,
         getServerDefaults,
+        deleteInstallation,
+        deleteServer,
     } = useData();
 
     useEffect(() => {
@@ -142,8 +144,9 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
                         <ItemCard 
                             key={item.id} 
                             item={item} 
-                            isFeatured={index === 0} 
+                            isFeatured={item.id === selectedInstance?.path} // Make the selected item featured
                             onEdit={handleEdit}
+                            onDelete={deleteFunc} // Pass the delete function
                             actionButtonText={cardActionButtonText}
                             statusLabel={cardStatusLabel}
                         />

@@ -95,9 +95,9 @@ const InstallationForm: React.FC<InstallationFormProps> = ({ item, isNew, onSave
   const [version, setVersion] = useState(item.version);
   const [gameDir, setGameDir] = useState(item.path);
   const [resolution, setResolution] = useState('1920x1080');
-  const [javaMemory, setJavaMemory] = useState(4096);
-  const [javaPath, setJavaPath] = useState('C:\\Program Files\\Java\\jdk-17\\bin\\javaw.exe');
-  const [jvmArgs, setJvmArgs] = useState('-Xms4G -Xmx4G');
+  const [javaPath, setJavaPath] = useState(item.java ?? '');
+  const [javaMemory, setJavaMemory] = useState(item.maxMemory ?? 4096);
+  const [jvmArgs, setJvmArgs] = useState(item.vmOptions ?? '');
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [isIconPickerOpen, setIconPickerOpen] = useState(false);
 
@@ -127,6 +127,9 @@ const InstallationForm: React.FC<InstallationFormProps> = ({ item, isNew, onSave
         version,
         path: gameDir,
         ...(itemTypeName === 'Server' && { port }),
+        java: javaPath,
+        maxMemory: javaMemory,
+        vmOptions: jvmArgs,
     });
   }
 

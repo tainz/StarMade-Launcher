@@ -9,6 +9,11 @@ export interface ManagedItem {
   path: string;
   lastPlayed: string;
   port?: string;
+  java?: string;
+  minMemory?: number;
+  maxMemory?: number;
+  vmOptions?: string;
+  mcOptions?: string;
 }
 
 export interface Account {
