@@ -5,6 +5,17 @@ import type { Page } from '../../types';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
 
+// This is a global from the preload script, so we need to declare it for TypeScript
+declare global {
+  interface Window {
+    windowController: {
+      minimize: () => void;
+      maximize: () => void;
+      close: () => void;
+    };
+  }
+}
+
 const UserProfile: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -90,13 +101,13 @@ const UserProfile: React.FC = () => {
 
 const WindowControls: React.FC = () => (
     <div className="flex items-center gap-2">
-        <button className="p-2 rounded-md hover:bg-white/5 transition-colors">
+        <button onClick={() => window.windowController.minimize()} className="p-2 rounded-md hover:bg-white/5 transition-colors">
             <MinimizeIcon className="w-5 h-5 text-gray-400" />
         </button>
-        <button className="p-2 rounded-md hover:bg-white/5 transition-colors">
+        <button onClick={() => window.windowController.maximize()} className="p-2 rounded-md hover:bg-white/5 transition-colors">
             <MaximizeIcon className="w-5 h-5 text-gray-400" />
         </button>
-        <button className="p-2 rounded-md hover:bg-starmade-danger/20 transition-colors">
+        <button onClick={() => window.windowController.close()} className="p-2 rounded-md hover:bg-starmade-danger/20 transition-colors">
             <CloseIcon className="w-5 h-5 text-gray-400 hover:text-starmade-danger-light" />
         </button>
     </div>
