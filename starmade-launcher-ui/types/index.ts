@@ -38,6 +38,7 @@ export interface AppContextType {
     pageProps: PageProps;
     isLaunchModalOpen: boolean;
     isLaunching: boolean;
+    progress: number;
     navigate: (page: Page, props?: PageProps) => void;
     openLaunchModal: () => void;
     closeLaunchModal: () => void;

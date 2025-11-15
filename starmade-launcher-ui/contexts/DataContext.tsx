@@ -1,20 +1,19 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+// starmade-launcher-ui/contexts/DataContext.tsx
+
+import React, { createContext, useContext, useState, ReactNode, useMemo } from 'react';
 import type { DataContextType as OriginalDataContextType, ManagedItem, Version } from '../types';
 import { useUserState } from '../components/hooks/useUserState';
-import { 
-    versionsData, 
-    initialInstallationsData, 
-    initialServersData,
-    defaultInstallationData,
-    defaultServerData
-} from '../data/mockData';
+import { useInstanceServiceState } from '../components/hooks/useInstanceServiceState';
+import { versionsData, defaultInstallationData, defaultServerData } from '../data/mockData';
+import { CreateInstanceOption, EditInstanceOptions, Instance } from '@xmcl/runtime-api';
 
-// Extend the original DataContextType to include new user actions and state
 export interface DataContextType extends OriginalDataContextType {
     loginMicrosoft: () => Promise<any>;
     logout: () => Promise<void>;
     userLoading: boolean;
     userError: string | null;
+    selectedInstance: Instance | null;
+    selectInstance: (path: string) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -30,21 +29,95 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loading: userLoading, 
         error: userError 
     } = useUserState();
+
+    // --- Instance State (Live Data from Backend) ---
+    const {
+        instances,
+        selectedInstancePath,
+        addInstance: createInstance,
+        editInstance,
+        deleteInstance,
+        selectInstance,
+    } = useInstanceServiceState();
+
+    const selectedInstance = useMemo(() => {
+        return instances.find(i => i.path === selectedInstancePath) || null;
+    }, [instances, selectedInstancePath]);
+
+    // --- Mapped Instances for UI ---
+    const installations = useMemo(() => instances.filter(i => !i.server), [instances]);
+    const servers = useMemo(() => instances.filter(i => !!i.server), [instances]);
     
     // --- Other State (Still Mocked) ---
-    const [installations, setInstallations] = useState<ManagedItem[]>(initialInstallationsData);
-    const [servers, setServers] = useState<ManagedItem[]>(initialServersData);
     const [versions, setVersions] = useState<Version[]>(versionsData);
     const [selectedVersion, setSelectedVersion] = useState<Version | null>(versionsData[0] || null);
 
-    // --- Mock Data Actions ---
-    const addInstallation = (item: ManagedItem) => setInstallations(prev => [item, ...prev]);
-    const updateInstallation = (item: ManagedItem) => setInstallations(prev => prev.map(i => i.id === item.id ? item : i));
-    const deleteInstallation = (id: string) => setInstallations(prev => prev.filter(i => i.id !== id));
+    // --- Data Actions ---
+    const addInstallation = (item: ManagedItem) => {
+        const options: CreateInstanceOption = {
+            name: item.name,
+            runtime: {
+                minecraft: item.version,
+                forge: '',
+                fabricLoader: '',
+                quiltLoader: '',
+            },
+            path: item.path,
+            icon: item.icon,
+        };
+        createInstance(options);
+    };
+    const updateInstallation = (item: ManagedItem) => {
+        const options: EditInstanceOptions & { instancePath: string } = {
+            instancePath: item.id, // Assuming item.id is the instance path
+            name: item.name,
+            runtime: {
+                minecraft: item.version,
+                forge: '',
+                fabricLoader: '',
+                quiltLoader: '',
+            },
+            icon: item.icon,
+        };
+        editInstance(options);
+    };
+    const deleteInstallation = (id: string) => deleteInstance(id);
     
-    const addServer = (item: ManagedItem) => setServers(prev => [item, ...prev]);
-    const updateServer = (item: ManagedItem) => setServers(prev => prev.map(s => s.id === item.id ? item : s));
-    const deleteServer = (id: string) => setServers(prev => prev.filter(s => s.id !== id));
+    const addServer = (item: ManagedItem) => {
+        const options: CreateInstanceOption = {
+            name: item.name,
+            runtime: {
+                minecraft: item.version,
+                forge: '',
+                fabricLoader: '',
+                quiltLoader: '',
+            },
+            path: item.path,
+            server: {
+                host: item.port || '127.0.0.1',
+            },
+            icon: item.icon,
+        };
+        createInstance(options);
+    };
+    const updateServer = (item: ManagedItem) => {
+        const options: EditInstanceOptions & { instancePath: string } = {
+            instancePath: item.id,
+            name: item.name,
+            runtime: {
+                minecraft: item.version,
+                forge: '',
+                fabricLoader: '',
+                quiltLoader: '',
+            },
+            server: {
+                host: item.port || '127.0.0.1',
+            },
+            icon: item.icon,
+        };
+        editInstance(options);
+    };
+    const deleteServer = (id: string) => deleteInstance(id);
 
     const getInstallationDefaults = () => ({ ...defaultInstallationData, id: Date.now().toString() });
     const getServerDefaults = () => ({ ...defaultServerData, id: Date.now().toString() });
@@ -60,12 +133,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         userLoading,
         userError,
 
-        // Mocked Data
+        // Live Instance Data
         installations,
         servers,
-        versions,
-        selectedVersion,
-        setSelectedVersion,
+        selectedInstance,
+        selectInstance,
         addInstallation,
         updateInstallation,
         deleteInstallation,
@@ -74,6 +146,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         deleteServer,
         getInstallationDefaults,
         getServerDefaults,
+
+        // Mocked Data
+        versions,
+        selectedVersion,
+        setSelectedVersion,
     };
 
     return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

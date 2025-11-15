@@ -115,6 +115,7 @@ const VersionSelector: React.FC = () => {
 
 interface SciFiPlayButtonProps {
     isUpdating: boolean;
+    progress: number;
     onClick: () => void;
     onUpdateComplete: () => void;
 }
@@ -217,6 +218,7 @@ const Footer: React.FC = () => {
 
             <SciFiPlayButton 
                 isUpdating={isLaunching}
+                progress={progress}
                 onClick={openLaunchModal}
                 onUpdateComplete={completeLaunching}
             />
