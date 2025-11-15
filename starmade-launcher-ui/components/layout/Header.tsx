@@ -4,17 +4,7 @@ import useOnClickOutside from '../hooks/useOnClickOutside';
 import type { Page } from '../../types';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
-
-// This is a global from the preload script, so we need to declare it for TypeScript
-declare global {
-  interface Window {
-    windowController: {
-      minimize: () => void;
-      maximize: () => void;
-      close: () => void;
-    };
-  }
-}
+import { useWindowControls } from '../hooks/useWindowControls';
 
 const UserProfile: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
