@@ -4,7 +4,6 @@ packages:
   - 'xmcl-runtime-api'
   - 'xmcl-runtime'
   - 'xmcl-keystone-ui'
-  - 'starmade-launcher-ui'
   - 'xmcl-client-vue'
   - '.github/actions/*'
   - 'packages/**'
