@@ -120,34 +120,7 @@ interface SciFiPlayButtonProps {
     onUpdateComplete: () => void;
 }
 
-const SciFiPlayButton: React.FC<SciFiPlayButtonProps> = ({ isUpdating, onClick, onUpdateComplete }) => {
-    const [progress, setProgress] = useState(0);
-
-    useEffect(() => {
-        if (isUpdating) {
-            setProgress(0);
-            const interval = setInterval(() => {
-                setProgress(prev => {
-                    const next = prev + 1;
-                    if (next >= 100) {
-                        clearInterval(interval);
-                        setTimeout(() => {
-                            onUpdateComplete();
-                        }, 1000);
-                        return 100;
-                    }
-                    return next;
-                });
-            }, 40);
-
-            return () => {
-                clearInterval(interval);
-            }
-        } else {
-            setProgress(0);
-        }
-    }, [isUpdating, onUpdateComplete]);
-
+const SciFiPlayButton: React.FC<SciFiPlayButtonProps> = ({ isUpdating, progress, onClick, onUpdateComplete }) => {
     const buttonClipPathId = "scifi-button-clip-path";
 
     return (

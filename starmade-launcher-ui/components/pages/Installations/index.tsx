@@ -20,14 +20,15 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
     const { 
         installations, 
         servers,
+        selectedInstance, // Added this line
         addInstallation,
         updateInstallation,
+        deleteInstallation,
         addServer,
         updateServer,
+        deleteServer,
         getInstallationDefaults,
         getServerDefaults,
-        deleteInstallation,
-        deleteServer,
     } = useData();
 
     useEffect(() => {
@@ -38,18 +39,20 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
         }
     }, [initialTab, activeTab]);
 
-    const { items, itemTypeName, cardActionButtonText, cardStatusLabel } = activeTab === 'installations' 
+    const { items, itemTypeName, cardActionButtonText, cardStatusLabel, deleteFunc } = activeTab === 'installations' 
     ? { 
         items: installations, 
         itemTypeName: 'Installation', 
         cardActionButtonText: 'Play', 
-        cardStatusLabel: 'Last played' 
+        cardStatusLabel: 'Last played',
+        deleteFunc: deleteInstallation, // Added this line
       }
     : { 
         items: servers, 
         itemTypeName: 'Server', 
         cardActionButtonText: 'Start', 
-        cardStatusLabel: 'Status' 
+        cardStatusLabel: 'Status',
+        deleteFunc: deleteServer, // Added this line
       };
     
     const handleEdit = (item: ManagedItem) => {
@@ -140,13 +143,13 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
                     </button>
                 </div>
                 <div className="flex-grow space-y-4 overflow-y-auto pr-4">
-                    {items.map((item, index) => (
+                    {items.map((item) => (
                         <ItemCard 
                             key={item.id} 
                             item={item} 
-                            isFeatured={item.id === selectedInstance?.path} // Make the selected item featured
+                            isFeatured={item.id === selectedInstance?.path}
                             onEdit={handleEdit}
-                            onDelete={deleteFunc} // Pass the delete function
+                            onDelete={deleteFunc}
                             actionButtonText={cardActionButtonText}
                             statusLabel={cardStatusLabel}
                         />
