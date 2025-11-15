@@ -53,10 +53,14 @@ export interface DataContextType {
     servers: ManagedItem[];
     versions: Version[];
     selectedVersion: Version | null;
+    userLoading: boolean;
+    userError: string | null;
 
     // Actions
     setActiveAccount: (account: Account) => void;
     setSelectedVersion: (version: Version) => void;
+    loginMicrosoft: () => Promise<any>;
+    logout: () => Promise<void>;
     addInstallation: (item: ManagedItem) => void;
     updateInstallation: (item: ManagedItem) => void;
     deleteInstallation: (id: string) => void;

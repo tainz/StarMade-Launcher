@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import type { DataContextType, ManagedItem, Account, Version } from '../types';
+import type { DataContextType as OriginalDataContextType, ManagedItem, Version } from '../types';
+import { useUserState } from '../components/hooks/useUserState';
 import { 
-    accountsData, 
     versionsData, 
     initialInstallationsData, 
     initialServersData,
@@ -9,18 +9,35 @@ import {
     defaultServerData
 } from '../data/mockData';
 
+// Extend the original DataContextType to include new user actions and state
+export interface DataContextType extends OriginalDataContextType {
+    loginMicrosoft: () => Promise<any>;
+    logout: () => Promise<void>;
+    userLoading: boolean;
+    userError: string | null;
+}
+
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [accounts, setAccounts] = useState<Account[]>(accountsData);
-    const [activeAccount, setActiveAccount] = useState<Account | null>(accountsData[0] || null);
+    // --- User State (Live Data from Backend) ---
+    const { 
+        users, 
+        activeUser, 
+        selectUser, 
+        loginMicrosoft, 
+        logout, 
+        loading: userLoading, 
+        error: userError 
+    } = useUserState();
     
+    // --- Other State (Still Mocked) ---
     const [installations, setInstallations] = useState<ManagedItem[]>(initialInstallationsData);
     const [servers, setServers] = useState<ManagedItem[]>(initialServersData);
-    
     const [versions, setVersions] = useState<Version[]>(versionsData);
     const [selectedVersion, setSelectedVersion] = useState<Version | null>(versionsData[0] || null);
 
+    // --- Mock Data Actions ---
     const addInstallation = (item: ManagedItem) => setInstallations(prev => [item, ...prev]);
     const updateInstallation = (item: ManagedItem) => setInstallations(prev => prev.map(i => i.id === item.id ? item : i));
     const deleteInstallation = (id: string) => setInstallations(prev => prev.filter(i => i.id !== id));
@@ -32,14 +49,22 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const getInstallationDefaults = () => ({ ...defaultInstallationData, id: Date.now().toString() });
     const getServerDefaults = () => ({ ...defaultServerData, id: Date.now().toString() });
 
-    const value = {
-        accounts,
-        activeAccount,
+    // --- Combined Context Value ---
+    const value: DataContextType = {
+        // Live User Data
+        accounts: users,
+        activeAccount: activeUser,
+        setActiveAccount: selectUser,
+        loginMicrosoft,
+        logout,
+        userLoading,
+        userError,
+
+        // Mocked Data
         installations,
         servers,
         versions,
         selectedVersion,
-        setActiveAccount,
         setSelectedVersion,
         addInstallation,
         updateInstallation,
