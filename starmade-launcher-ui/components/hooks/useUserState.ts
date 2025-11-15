@@ -20,7 +20,7 @@ import { useService, useServiceMutation } from './useService';
 export function useUserState() {
     const userService = useService(UserServiceKey);
 
-    // Raw reactive state object from the backend. Used for subscriptions.
+    // Raw reactive state object from the backend. Used for subscriptions and state method calls.
     const [userState, setUserState] = useState<UserState | undefined>(undefined);
 
     // Derived state for UI consumption
@@ -52,22 +52,18 @@ export function useUserState() {
         setUsers(currentUsers => {
             const index = currentUsers.findIndex(u => u.id === profile.id);
             if (index !== -1) {
-                // Update existing user
                 const newUsers = [...currentUsers];
                 newUsers[index] = profile;
                 return newUsers;
             }
-            // Add new user
             return [...currentUsers, profile];
         });
     });
 
     useServiceMutation(userState, 'userProfileRemove', (userId: string) => {
         setUsers(currentUsers => currentUsers.filter(u => u.id !== userId));
-        // If the removed user was the active one, select another
         setActiveUser(currentUser => {
             if (currentUser?.id === userId) {
-                // This logic might need to be more robust, e.g., selecting the first user
                 return null;
             }
             return currentUser;
@@ -76,39 +72,45 @@ export function useUserState() {
 
     useServiceMutation(userState, 'userProfileSelect', (userId: string) => {
         // The backend has confirmed the user selection has changed
-        setActiveUser(users.find(u => u.id === userId) || null);
+        setUsers(currentUsers => {
+            setActiveUser(currentUsers.find(u => u.id === userId) || null);
+            return currentUsers;
+        });
     });
 
     // === ACTIONS ===
     // Functions that components can call to interact with the user service.
 
     const selectUser = useCallback((user: UserProfile) => {
+        if (!userState) {
+            console.error("Cannot select user, userState is not ready");
+            return;
+        }
         // Optimistically update the UI, the mutation listener will correct it if needed
         setActiveUser(user);
-        userService.selectUser(user.id).catch(e => {
+        
+        // ✅ CORRECTED: The method to change the selected user is on the STATE object, not the service.
+        (userState as any).select(user.id).catch((e: any) => {
             console.error(`Failed to select user ${user.id}:`, e);
             // Revert optimistic update on failure if necessary
         });
-    }, [userService, users]);
+    }, [userState]); // Dependency is on userState
 
     const loginMicrosoft = useCallback(async () => {
         setError(null);
         setLoading(true);
         try {
             const options: LoginOptions = {
-                username: '', // Not needed for Microsoft login flow
+                username: '',
                 authority: AUTHORITY_MICROSOFT,
-                properties: {
-                    mode: 'popup' // Use popup window for login
-                }
+                properties: { mode: 'popup' }
             };
             const newUserProfile = await userService.login(options);
-            selectUser(newUserProfile); // Select the newly logged-in user
+            selectUser(newUserProfile);
             return newUserProfile;
         } catch (e) {
             console.error("Microsoft login failed:", e);
             if (isException(UserException, e)) {
-                // Handle specific user exceptions if needed
                 setError(e.exception.type || "An unknown login error occurred.");
             } else {
                 setError("An unknown login error occurred.");
@@ -124,7 +126,6 @@ export function useUserState() {
         setLoading(true);
         try {
             await userService.removeUser(activeUser);
-            // The mutation listener will handle the state update
         } catch (e) {
             console.error(`Failed to logout user ${activeUser.id}:`, e);
             setError("Failed to log out.");
@@ -138,7 +139,6 @@ export function useUserState() {
         setLoading(true);
         try {
             await userService.refreshUser(activeUser.id);
-            // The mutation listener will handle the state update
         } catch (e) {
             console.error(`Failed to refresh user ${activeUser.id}:`, e);
             setError("Failed to refresh user session.");
