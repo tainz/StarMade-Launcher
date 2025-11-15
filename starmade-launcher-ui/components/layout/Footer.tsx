@@ -204,7 +204,7 @@ const SciFiPlayButton: React.FC<SciFiPlayButtonProps> = ({ isUpdating, onClick, 
 
 
 const Footer: React.FC = () => {
-  const { navigate, isLaunching, openLaunchModal, completeLaunching } = useApp();
+  const { navigate, isLaunching, openLaunchModal, completeLaunching, progress } = useApp();
 
   return (
     <footer className="relative z-20 px-6 py-4 bg-black/20 backdrop-blur-sm border-t border-white/5">

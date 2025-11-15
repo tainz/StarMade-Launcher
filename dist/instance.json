@@ -1,0 +1,30 @@
+{
+  "name": "New Server2",
+  "url": "",
+  "icon": "server",
+  "runtime": {
+    "minecraft": "0.203.175",
+    "forge": "",
+    "liteloader": "",
+    "fabricLoader": "",
+    "yarn": "",
+    "optifine": "",
+    "quiltLoader": "",
+    "neoForged": "",
+    "labyMod": ""
+  },
+  "java": "",
+  "version": "",
+  "server": {
+    "host": "4242"
+  },
+  "author": "",
+  "description": "",
+  "lastAccessDate": 1763213933678,
+  "creationDate": 1763213933678,
+  "modpackVersion": "",
+  "fileApi": "",
+  "tags": [],
+  "lastPlayedDate": 0,
+  "playtime": 0
+}
