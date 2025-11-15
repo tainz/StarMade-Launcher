@@ -10,12 +10,41 @@ const UserProfile: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const { navigate } = useApp();
-    const { accounts, activeAccount, setActiveAccount } = useData();
+    const { 
+        accounts, 
+        activeAccount, 
+        setActiveAccount, 
+        loginMicrosoft, 
+        logout,
+        userLoading 
+    } = useData();
 
     useOnClickOutside(dropdownRef, () => setIsOpen(false));
 
+    // Helper to get the display name from the complex UserProfile object
+    const getDisplayName = (account: any) => {
+        if (!account) return '';
+        // This is the correct way to access the in-game name
+        if (account.profiles && account.selectedProfile) {
+            return account.profiles[account.selectedProfile]?.name || account.username;
+        }
+        // Fallback for older or different account structures
+        return account.name || account.username;
+    };
+
     if (!activeAccount) {
-        return null;
+        return (
+            <div className="flex items-center gap-3">
+                <button 
+                    onClick={loginMicrosoft}
+                    disabled={userLoading}
+                    className="flex items-center gap-2 px-4 py-2 rounded-md bg-starmade-accent hover:bg-starmade-accent-hover transition-colors text-sm font-bold uppercase tracking-wider"
+                >
+                    <UserPlusIcon className="w-5 h-5" />
+                    <span>{userLoading ? 'Logging in...' : 'Add Account'}</span>
+                </button>
+            </div>
+        );
     }
 
     return (
@@ -25,7 +54,8 @@ const UserProfile: React.FC = () => {
                     <UserIcon className="w-6 h-6 text-slate-400" />
                 </div>
                 <div>
-                    <h3 className="font-semibold text-white">{activeAccount.name}</h3>
+                    {/* Use the helper to get the correct name */}
+                    <h3 className="font-semibold text-white">{getDisplayName(activeAccount)}</h3>
                 </div>
                 <ChevronDownIcon className={`w-4 h-4 text-gray-400 group-hover:text-white transition-all ${isOpen ? 'rotate-180' : ''}`} />
             </div>
@@ -47,7 +77,8 @@ const UserProfile: React.FC = () => {
                                         <div className="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center border border-slate-600">
                                             <UserIcon className="w-5 h-5 text-slate-400" />
                                         </div>
-                                        <span className="text-sm text-white flex-1">{account.name}</span>
+                                        {/* Use the helper here as well */}
+                                        <span className="text-sm text-white flex-1">{getDisplayName(account)}</span>
                                         {activeAccount.id === account.id && <CheckCircleIcon className="w-5 h-5 text-starmade-accent" />}
                                     </button>
                                 </li>
@@ -70,15 +101,29 @@ const UserProfile: React.FC = () => {
                                 </button>
                             </li>
                              <li>
-                                <button className="w-full flex items-center gap-3 px-2 py-2 text-left rounded-md hover:bg-slate-700/50 transition-colors text-sm text-gray-300 hover:text-white">
+                                <button 
+                                    onClick={() => {
+                                        loginMicrosoft();
+                                        setIsOpen(false);
+                                    }}
+                                    disabled={userLoading}
+                                    className="w-full flex items-center gap-3 px-2 py-2 text-left rounded-md hover:bg-slate-700/50 transition-colors text-sm text-gray-300 hover:text-white disabled:opacity-50"
+                                >
                                     <UserPlusIcon className="w-5 h-5" />
-                                    <span>Add Account</span>
+                                    <span>{userLoading ? 'Logging in...' : 'Add Account'}</span>
                                 </button>
                             </li>
                              <li>
-                                <button className="w-full flex items-center gap-3 px-2 py-2 text-left rounded-md hover:bg-slate-700/50 transition-colors text-sm text-gray-300 hover:text-white">
+                                <button 
+                                    onClick={() => {
+                                        logout();
+                                        setIsOpen(false);
+                                    }}
+                                    disabled={userLoading}
+                                    className="w-full flex items-center gap-3 px-2 py-2 text-left rounded-md hover:bg-slate-700/50 transition-colors text-sm text-gray-300 hover:text-white disabled:opacity-50"
+                                >
                                     <ArrowRightOnRectangleIcon className="w-5 h-5" />
-                                    <span>Log Out</span>
+                                    <span>{userLoading ? 'Logging out...' : 'Log Out'}</span>
                                 </button>
                             </li>
                          </ul>
@@ -89,19 +134,22 @@ const UserProfile: React.FC = () => {
     );
 };
 
-const WindowControls: React.FC = () => (
-    <div className="flex items-center gap-2">
-        <button onClick={() => window.windowController.minimize()} className="p-2 rounded-md hover:bg-white/5 transition-colors">
-            <MinimizeIcon className="w-5 h-5 text-gray-400" />
-        </button>
-        <button onClick={() => window.windowController.maximize()} className="p-2 rounded-md hover:bg-white/5 transition-colors">
-            <MaximizeIcon className="w-5 h-5 text-gray-400" />
-        </button>
-        <button onClick={() => window.windowController.close()} className="p-2 rounded-md hover:bg-starmade-danger/20 transition-colors">
-            <CloseIcon className="w-5 h-5 text-gray-400 hover:text-starmade-danger-light" />
-        </button>
-    </div>
-);
+const WindowControls: React.FC = () => {
+    const { minimize, maximize, close } = useWindowControls();
+    return (
+        <div className="flex items-center gap-2">
+            <button onClick={minimize} className="p-2 rounded-md hover:bg-white/5 transition-colors">
+                <MinimizeIcon className="w-5 h-5 text-gray-400" />
+            </button>
+            <button onClick={maximize} className="p-2 rounded-md hover:bg-white/5 transition-colors">
+                <MaximizeIcon className="w-5 h-5 text-gray-400" />
+            </button>
+            <button onClick={close} className="p-2 rounded-md hover:bg-starmade-danger/20 transition-colors">
+                <CloseIcon className="w-5 h-5 text-gray-400 hover:text-starmade-danger-light" />
+            </button>
+        </div>
+    );
+};
 
 const Navigation: React.FC = () => {
     const { activePage, navigate } = useApp();

@@ -12,6 +12,11 @@
     "lint:fix": "echo \"starmade-launcher-ui: no lint:fix configured yet\""
   },
   "dependencies": {
+    "@xmcl/core": "workspace:*",
+    "@xmcl/installer": "workspace:*",
+    "@xmcl/instance": "workspace:*",
+    "@xmcl/runtime-api": "workspace:*",
+    "@xmcl/user": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
