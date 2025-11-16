@@ -8,6 +8,7 @@ import { versionsData, defaultInstallationData, defaultServerData } from '../dat
 import { CreateInstanceOption, EditInstanceOptions, Instance, MinecraftVersion } from '@xmcl/runtime-api';
 import { useVersionService } from '../components/hooks/useVersionService';
 import { useInstallService } from '../components/hooks/useInstallService';
+import { useJavaContext } from '../hooks/useJavaContext';
 
 export interface DataContextType extends OriginalDataContextType {
     loginMicrosoft: () => Promise<any>;
@@ -201,6 +202,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }), [latestReleaseId]);
 
     const getServerDefaults = () => ({ ...defaultServerData, id: Date.now().toString() });
+    
+    const { all: javaVersions, missing: javaIsMissing, refresh: refreshJava } = useJavaContext();
 
     const value: DataContextType = {
         accounts: users,
@@ -226,6 +229,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         minecraftVersions,
         selectedVersion,
         setSelectedVersion,
+        javaVersions,
+        javaIsMissing,
+        refreshJava,
     };
 
     return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
