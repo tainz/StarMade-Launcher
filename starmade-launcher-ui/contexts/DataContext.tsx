@@ -7,6 +7,7 @@ import { useInstanceServiceState } from '../components/hooks/useInstanceServiceS
 import { versionsData, defaultInstallationData, defaultServerData } from '../data/mockData';
 import { CreateInstanceOption, EditInstanceOptions, Instance, MinecraftVersion } from '@xmcl/runtime-api';
 import { useVersionService } from '../components/hooks/useVersionService';
+import { useInstallService } from '../components/hooks/useInstallService';
 
 export interface DataContextType extends OriginalDataContextType {
     loginMicrosoft: () => Promise<any>;
@@ -40,6 +41,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } = useInstanceServiceState();
 
     const { getMinecraftVersionList } = useVersionService();
+    const { installMinecraft } = useInstallService();
     const [minecraftVersions, setMinecraftVersions] = useState<MinecraftVersion[]>([]);
     const [latestReleaseId, setLatestReleaseId] = useState<string | null>(null);
 
@@ -78,7 +80,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [versions, setVersions] = useState<Version[]>(versionsData);
     const [selectedVersion, setSelectedVersion] = useState<Version | null>(versionsData[0] || null);
 
-    const addInstallation = useCallback((item: ManagedItem) => {
+    const addInstallation = useCallback(async (item: ManagedItem) => {
         const options: CreateInstanceOption = {
             name: item.name,
             runtime: {
@@ -87,15 +89,44 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 fabricLoader: '',
                 quiltLoader: '',
             },
-            // DO NOT PROVIDE PATH! Let the backend generate it.
             icon: item.icon,
             java: item.java,
             maxMemory: item.maxMemory,
             minMemory: item.minMemory,
             vmOptions: item.vmOptions?.split(' ').filter(v => v),
         };
-        createInstance(options);
-    }, [createInstance]);
+
+        try {
+            // 1. Create the instance record. The backend will generate the path.
+            const newInstancePath = await createInstance(options);
+            if (!newInstancePath) {
+                throw new Error("Failed to create instance: No path returned.");
+            }
+
+            // 2. Find the version metadata for the selected version.
+            const versionMeta = minecraftVersions.find(v => v.id === item.version);
+            if (!versionMeta) {
+                console.error(`Could not find Minecraft version metadata for ${item.version}`);
+                return;
+            }
+
+            // 3. Trigger the installation of the Minecraft version to the shared versions directory.
+            await installMinecraft(versionMeta);
+
+            // 4. Edit the instance to ensure the version is set. This is somewhat redundant
+            //    as we set it in createInstance, but it's good practice to confirm after install.
+            await editInstance({
+                instancePath: newInstancePath,
+                runtime: {
+                    minecraft: item.version,
+                },
+            });
+
+        } catch (e) {
+            console.error("Failed during instance creation and installation:", e);
+            // Optionally, show a notification to the user
+        }
+    }, [createInstance, minecraftVersions, installMinecraft, editInstance]);
 
     const updateInstallation = useCallback((item: ManagedItem) => {
         const options: EditInstanceOptions & { instancePath: string } = {
