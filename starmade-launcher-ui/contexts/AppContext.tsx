@@ -1,20 +1,9 @@
-import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect, useMemo } from 'react';
 import type { AppContextType, Page, PageProps } from '../types';
 import { useData } from './DataContext';
 import { useService } from '../components/hooks/useService';
-import { LaunchServiceKey, LaunchOptions, TaskBatchUpdatePayloads, TaskState } from '@xmcl/runtime-api';
-
-// This is a global from the preload script, so we need to declare it for TypeScript
-declare global {
-  interface Window {
-    taskMonitor: {
-      subscribe(): void;
-      unsubscribe(): void;
-      on(event: 'task-update', listener: (payload: TaskBatchUpdatePayloads) => void): void;
-      removeListener(event: 'task-update', listener: (payload: TaskBatchUpdatePayloads) => void): void;
-    };
-  }
-}
+import { LaunchServiceKey, LaunchOptions, TaskState } from '@xmcl/runtime-api';
+import { useTaskManager } from '../components/hooks/useTaskManager';
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -22,55 +11,71 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const [activePage, setActivePage] = useState<Page>('Play');
     const [pageProps, setPageProps] = useState<PageProps>({});
     const [isLaunchModalOpen, setIsLaunchModalOpen] = useState(false);
-    const [isLaunching, setIsLaunching] = useState(false); // This will now represent install/launch progress
+    const [isLaunching, setIsLaunching] = useState(false);
     const [progress, setProgress] = useState(0);
 
     const data = useData();
     const launchService = useService(LaunchServiceKey);
+    
+    // Use the task manager hook
+    const { tasks, pause, resume, cancel } = useTaskManager();
 
+    // Calculate overall progress from active tasks
+    const launchProgress = useMemo(() => {
+        const activeTasks = tasks.filter(
+            (t) => t.state === TaskState.Running && (
+                t.path.includes('install') || t.path.startsWith('launch')
+            )
+        );
+        
+        if (activeTasks.length === 0) return 0;
+
+        const totalProgress = activeTasks.reduce((sum, t) => {
+            if (t.total > 0) {
+                return sum + (t.progress / t.total) * 100;
+            }
+            return sum;
+        }, 0);
+
+        return totalProgress / activeTasks.length;
+    }, [tasks]);
+
+    // Update progress state from calculated launchProgress
     useEffect(() => {
-        const handleTaskUpdate = (payload: TaskBatchUpdatePayloads) => {
-            const { updates, adds } = payload;
-            // Find a relevant task that indicates a download/install or launch process
-            const relevantTask = [...updates, ...adds].find(
-                (t) => t.path === 'installVersion' || t.path === 'installInstance' || t.path.startsWith('launch')
+        setProgress(launchProgress);
+    }, [launchProgress]);
+
+    // Update isLaunching based on tasks
+    useEffect(() => {
+        const hasLaunchTasks = tasks.some(
+            (t) => (t.path === 'launch' || t.path.includes('install')) && 
+                   t.state === TaskState.Running
+        );
+        
+        if (hasLaunchTasks) {
+            setIsLaunching(true);
+        } else {
+            // Check if any tasks just completed
+            const hasCompletedTasks = tasks.some(
+                (t) => (t.path === 'launch' || t.path.includes('install')) &&
+                       (t.state === TaskState.Succeed || 
+                        t.state === TaskState.Failed || 
+                        t.state === TaskState.Cancelled)
             );
 
-            if (relevantTask) {
-                if (relevantTask.state === TaskState.Running) {
-                    setIsLaunching(true);
-                    if (relevantTask.total > 0) {
-                        const calculatedProgress = (relevantTask.progress / relevantTask.total) * 100;
-                        setProgress(calculatedProgress);
-                    }
-                } else if (
-                    relevantTask.state === TaskState.Succeed ||
-                    relevantTask.state === TaskState.Failed ||
-                    relevantTask.state === TaskState.Cancelled
-                ) {
-                    // Use a timeout to ensure the user sees the 100% completion state briefly
-                    setTimeout(() => {
-                        setIsLaunching(false);
-                        setProgress(0);
-                    }, 1500);
-                }
+            if (hasCompletedTasks && isLaunching) {
+                // Brief delay to show completion state
+                const timeout = setTimeout(() => {
+                    setIsLaunching(false);
+                    setProgress(0);
+                }, 1500);
+                return () => clearTimeout(timeout);
+            } else if (!hasLaunchTasks) {
+                setIsLaunching(false);
+                setProgress(0);
             }
-        };
-
-        // Ensure taskMonitor is available before subscribing
-        if (window.taskMonitor) {
-            window.taskMonitor.subscribe();
-            window.taskMonitor.on('task-update', handleTaskUpdate);
         }
-
-        // Cleanup function to remove the listener
-        return () => {
-            if (window.taskMonitor) {
-                window.taskMonitor.removeListener('task-update', handleTaskUpdate);
-                window.taskMonitor.unsubscribe();
-            }
-        };
-    }, []);
+    }, [tasks, isLaunching]);
 
     const navigate = (page: Page, props: PageProps = {}) => {
         setActivePage(page);
@@ -82,6 +87,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             setIsLaunchModalOpen(true);
         }
     };
+    
     const closeLaunchModal = () => setIsLaunchModalOpen(false);
 
     const startLaunching = useCallback(async () => {
@@ -106,7 +112,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 mcOptions: data.selectedInstance.mcOptions,
             };
             await launchService.launch(options);
-            // The isLaunching state will be handled by the task manager from now on
+            // The isLaunching state is now handled by the task manager
         } catch (e) {
             console.error("Failed to launch game:", e);
             setIsLaunching(false); // Reset on failure
@@ -130,6 +136,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         closeLaunchModal,
         startLaunching,
         completeLaunching,
+        // Expose task manager functions if needed by other components
+        tasks,
+        pauseTask: pause,
+        resumeTask: resume,
+        cancelTask: cancel,
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
@@ -142,3 +153,4 @@ export const useApp = (): AppContextType => {
     }
     return context;
 }
+
