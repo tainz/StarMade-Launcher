@@ -4,6 +4,7 @@ import { useData } from './DataContext';
 import { useService } from '../components/hooks/useService';
 import { LaunchServiceKey, LaunchOptions, TaskState } from '@xmcl/runtime-api';
 import { useTaskManager } from '../components/hooks/useTaskManager';
+import { useInstanceVersionInstall } from '../components/hooks/useInstanceVersionInstall';
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -19,6 +20,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     
     // Use the task manager hook
     const { tasks, pause, resume, cancel } = useTaskManager();
+
+    // Get the instance version install hook to check for missing components
+    const { instruction, fix: fixInstanceVersion, loading: fixingInstance } = useInstanceVersionInstall(
+        data.selectedInstance?.path || '',
+        data.installations.map(inst => ({
+            path: inst.id,
+            name: inst.name,
+            version: inst.version,
+            runtime: { minecraft: inst.version },
+            // Map other Instance properties as needed
+        } as any)), // TODO: Properly type this conversion
+        data.javaVersions || []
+    );
 
     // Calculate overall progress from active tasks
     const launchProgress = useMemo(() => {
@@ -101,6 +115,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setIsLaunching(true); // Optimistically set launching state
 
         try {
+            // Check if there are missing version components that need to be installed
+            if (instruction) {
+                console.log('Missing components detected, installing...', instruction);
+                try {
+                    await fixInstanceVersion();
+                    console.log('Missing components installed successfully');
+                } catch (installError) {
+                    console.error('Failed to install missing version components:', installError);
+                    setIsLaunching(false);
+                    setProgress(0);
+                    // TODO: Show user-friendly error dialog
+                    alert('Failed to install required game files. Please check the logs.');
+                    return;
+                }
+            }
+
+            // Proceed with launch after ensuring all components are installed
             const options: LaunchOptions = {
                 version: data.selectedInstance.version,
                 gameDirectory: data.selectedInstance.path,
@@ -111,14 +142,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 vmOptions: data.selectedInstance.vmOptions,
                 mcOptions: data.selectedInstance.mcOptions,
             };
+            
             await launchService.launch(options);
             // The isLaunching state is now handled by the task manager
         } catch (e) {
             console.error("Failed to launch game:", e);
             setIsLaunching(false); // Reset on failure
             setProgress(0);
+            // TODO: Parse launch exceptions and show user-friendly errors
+            alert(`Launch failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
         }
-    }, [data.selectedInstance, data.activeAccount, launchService]);
+    }, [data.selectedInstance, data.activeAccount, launchService, instruction, fixInstanceVersion]);
     
     const completeLaunching = () => {
         setIsLaunching(false);
@@ -153,4 +187,3 @@ export const useApp = (): AppContextType => {
     }
     return context;
 }
-
