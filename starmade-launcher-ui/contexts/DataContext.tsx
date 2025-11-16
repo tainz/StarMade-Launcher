@@ -8,7 +8,7 @@ import { versionsData, defaultInstallationData, defaultServerData } from '../dat
 import { CreateInstanceOption, EditInstanceOptions, Instance, MinecraftVersion } from '@xmcl/runtime-api';
 import { useVersionService } from '../components/hooks/useVersionService';
 import { useInstallService } from '../components/hooks/useInstallService';
-import { useJavaContext } from '../hooks/useJavaContext';
+import { useJavaContext } from '../components/hooks/useJavaContext';
 
 export interface DataContextType extends OriginalDataContextType {
     loginMicrosoft: () => Promise<any>;
