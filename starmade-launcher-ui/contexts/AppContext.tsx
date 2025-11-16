@@ -4,13 +4,25 @@ import { useData } from './DataContext';
 import { useService } from '../components/hooks/useService';
 import { LaunchServiceKey, LaunchOptions, TaskBatchUpdatePayloads, TaskState } from '@xmcl/runtime-api';
 
+// This is a global from the preload script, so we need to declare it for TypeScript
+declare global {
+  interface Window {
+    taskMonitor: {
+      subscribe(): void;
+      unsubscribe(): void;
+      on(event: 'task-update', listener: (payload: TaskBatchUpdatePayloads) => void): void;
+      removeListener(event: 'task-update', listener: (payload: TaskBatchUpdatePayloads) => void): void;
+    };
+  }
+}
+
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const [activePage, setActivePage] = useState<Page>('Play');
     const [pageProps, setPageProps] = useState<PageProps>({});
     const [isLaunchModalOpen, setIsLaunchModalOpen] = useState(false);
-    const [isLaunching, setIsLaunching] = useState(false);
+    const [isLaunching, setIsLaunching] = useState(false); // This will now represent install/launch progress
     const [progress, setProgress] = useState(0);
 
     const data = useData();
@@ -19,24 +31,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     useEffect(() => {
         const handleTaskUpdate = (payload: TaskBatchUpdatePayloads) => {
             const { updates, adds } = payload;
-            // Find a relevant task that indicates a download/install process
+            // Find a relevant task that indicates a download/install or launch process
             const relevantTask = [...updates, ...adds].find(
-                (t) => t.path === 'installVersion' || t.path === 'installInstance' || t.path === 'installForge' || t.path === 'installFabric'
+                (t) => t.path === 'installVersion' || t.path === 'installInstance' || t.path.startsWith('launch')
             );
 
             if (relevantTask) {
                 if (relevantTask.state === TaskState.Running) {
                     setIsLaunching(true);
                     if (relevantTask.total > 0) {
-                        setProgress((relevantTask.progress / relevantTask.total) * 100);
+                        const calculatedProgress = (relevantTask.progress / relevantTask.total) * 100;
+                        setProgress(calculatedProgress);
                     }
                 } else if (
                     relevantTask.state === TaskState.Succeed ||
                     relevantTask.state === TaskState.Failed ||
                     relevantTask.state === TaskState.Cancelled
                 ) {
-                    setIsLaunching(false);
-                    setProgress(0);
+                    // Use a timeout to ensure the user sees the 100% completion state briefly
+                    setTimeout(() => {
+                        setIsLaunching(false);
+                        setProgress(0);
+                    }, 1500);
                 }
             }
         };
@@ -47,6 +63,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             window.taskMonitor.on('task-update', handleTaskUpdate);
         }
 
+        // Cleanup function to remove the listener
         return () => {
             if (window.taskMonitor) {
                 window.taskMonitor.removeListener('task-update', handleTaskUpdate);
@@ -70,7 +87,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const startLaunching = useCallback(async () => {
         if (!data.selectedInstance || !data.activeAccount) {
             console.error("Cannot launch without a selected instance and active account.");
-            // Here you might want to show a notification to the user
             setIsLaunchModalOpen(false);
             return;
         }
@@ -93,7 +109,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             // The isLaunching state will be handled by the task manager from now on
         } catch (e) {
             console.error("Failed to launch game:", e);
-            // You can show an error notification here
             setIsLaunching(false); // Reset on failure
             setProgress(0);
         }
