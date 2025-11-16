@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FolderIcon, MonitorIcon, ChevronDownIcon, CloseIcon, PencilIcon } from './icons';
 import type { ManagedItem, ItemType } from '../../types';
 import { getIconComponent } from '../../utils/getIconComponent';
 import CustomDropdown from './CustomDropdown';
 import MemorySlider from './MemorySlider';
+import { useData } from '../../contexts/DataContext';
 
 interface InstallationFormProps {
   item: ManagedItem;
@@ -101,6 +102,12 @@ const InstallationForm: React.FC<InstallationFormProps> = ({ item, isNew, onSave
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [isIconPickerOpen, setIconPickerOpen] = useState(false);
 
+  const { minecraftVersions } = useData();
+
+  const versionOptions = useMemo(() => {
+    return minecraftVersions.map(v => ({ value: v.id, label: v.id }));
+  }, [minecraftVersions]);
+
   useEffect(() => {
     const memoryInGB = javaMemory / 1024;
     setJvmArgs(prevArgs => {
@@ -136,11 +143,6 @@ const InstallationForm: React.FC<InstallationFormProps> = ({ item, isNew, onSave
   const title = isNew ? `New ${itemTypeName}` : `Edit ${itemTypeName}`;
   const saveButtonText = isNew ? 'Create' : 'Save';
 
-  const versions = [
-    { value: '0.203.175', label: '0.203.175' },
-    { value: '24w14a', label: '24w14a' },
-    { value: '1.0', label: '1.0' },
-  ];
   const resolutionOptions = resolutions.map(res => ({ value: res, label: res }));
 
   return (
@@ -201,7 +203,7 @@ const InstallationForm: React.FC<InstallationFormProps> = ({ item, isNew, onSave
             </FormField>
             <FormField label="Version" htmlFor="itemVersion">
               <CustomDropdown
-                options={versions}
+                options={versionOptions}
                 value={version}
                 onChange={setVersion}
               />

@@ -1,3 +1,5 @@
+import type { MinecraftVersion } from '@xmcl/runtime-api';
+
 export type ItemType = 'latest' | 'release' | 'dev' | 'archive' | 'pre';
 
 export interface ManagedItem {
@@ -58,6 +60,7 @@ export interface DataContextType {
     installations: ManagedItem[];
     servers: ManagedItem[];
     versions: Version[];
+    minecraftVersions: MinecraftVersion[]; // Added for live Minecraft version data
     selectedVersion: Version | null;
     userLoading: boolean;
     userError: string | null;

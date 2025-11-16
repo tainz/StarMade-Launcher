@@ -1,11 +1,12 @@
 // starmade-launcher-ui/contexts/DataContext.tsx
 
-import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback, useEffect } from 'react';
 import type { DataContextType as OriginalDataContextType, ManagedItem, Version } from '../types';
 import { useUserState } from '../components/hooks/useUserState';
 import { useInstanceServiceState } from '../components/hooks/useInstanceServiceState';
 import { versionsData, defaultInstallationData, defaultServerData } from '../data/mockData';
-import { CreateInstanceOption, EditInstanceOptions, Instance } from '@xmcl/runtime-api';
+import { CreateInstanceOption, EditInstanceOptions, Instance, MinecraftVersion } from '@xmcl/runtime-api';
+import { useVersionService } from '../components/hooks/useVersionService';
 
 export interface DataContextType extends OriginalDataContextType {
     loginMicrosoft: () => Promise<any>;
@@ -37,6 +38,19 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         deleteInstance,
         selectInstance,
     } = useInstanceServiceState();
+
+    const { getMinecraftVersionList } = useVersionService();
+    const [minecraftVersions, setMinecraftVersions] = useState<MinecraftVersion[]>([]);
+    const [latestReleaseId, setLatestReleaseId] = useState<string | null>(null);
+
+    useEffect(() => {
+        getMinecraftVersionList().then((list) => {
+            setMinecraftVersions(list.versions);
+            setLatestReleaseId(list.latest.release);
+        }).catch(err => {
+            console.error("Failed to fetch Minecraft versions:", err);
+        });
+    }, [getMinecraftVersionList]);
 
     const selectedInstance = useMemo(() => {
         return instances.find(i => i.path === selectedInstancePath) || null;
@@ -149,7 +163,12 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const deleteServer = useCallback((id: string) => deleteInstance(id), [deleteInstance]);
 
-    const getInstallationDefaults = () => ({ ...defaultInstallationData, id: Date.now().toString() });
+    const getInstallationDefaults = useCallback(() => ({ 
+        ...defaultInstallationData, 
+        version: latestReleaseId || defaultInstallationData.version,
+        id: Date.now().toString() 
+    }), [latestReleaseId]);
+
     const getServerDefaults = () => ({ ...defaultServerData, id: Date.now().toString() });
 
     const value: DataContextType = {
@@ -173,6 +192,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         getInstallationDefaults,
         getServerDefaults,
         versions,
+        minecraftVersions,
         selectedVersion,
         setSelectedVersion,
     };
