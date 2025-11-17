@@ -54,6 +54,13 @@ export interface AppContextType {
   closeLaunchModal: () => void;
   startLaunching: () => void;
   completeLaunching: () => void;
+  gameExitError: {
+    code: number;
+    crashReport?: string;
+    crashReportLocation?: string;
+    errorLog?: string;
+  } | null;
+  clearGameExitError: () => void;
   // Task manager properties
   tasks: TaskItem[];
   pauseTask: (task: TaskItem) => void;
