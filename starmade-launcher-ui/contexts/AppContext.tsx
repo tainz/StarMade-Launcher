@@ -96,24 +96,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
     }, [launchService]);
 
-    // Calculate overall progress from active tasks
+    // Calculate overall progress from all active tasks
     const launchProgress = useMemo(() => {
-        const activeTasks = tasks.filter(
-            (t) => t.state === TaskState.Running && (
-                t.path.includes('install') || t.path.startsWith('launch')
-            )
-        );
-        
-        if (activeTasks.length === 0) return 0;
+      const activeTasks = tasks.filter((t) => t.state === TaskState.Running);
+      if (activeTasks.length === 0) return 0;
 
-        const totalProgress = activeTasks.reduce((sum, t) => {
-            if (t.total > 0) {
-                return sum + (t.progress / t.total) * 100;
-            }
-            return sum;
-        }, 0);
+      const totalProgress = activeTasks.reduce((sum, t) => {
+        if (t.total <= 0) return sum;
+        return sum + (t.progress / t.total) * 100;
+      }, 0);
 
-        return totalProgress / activeTasks.length;
+      return totalProgress / activeTasks.length;
     }, [tasks]);
 
     // Update progress state from calculated launchProgress
@@ -121,36 +114,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setProgress(launchProgress);
     }, [launchProgress]);
 
-    // Update isLaunching based on tasks
+    // Update isLaunching based on any active tasks
     useEffect(() => {
-        const hasLaunchTasks = tasks.some(
-            (t) => (t.path === 'launch' || t.path.includes('install')) && 
-                   t.state === TaskState.Running
-        );
-        
-        if (hasLaunchTasks) {
-            setIsLaunching(true);
-        } else {
-            // Check if any tasks just completed
-            const hasCompletedTasks = tasks.some(
-                (t) => (t.path === 'launch' || t.path.includes('install')) &&
-                       (t.state === TaskState.Succeed || 
-                        t.state === TaskState.Failed || 
-                        t.state === TaskState.Cancelled)
-            );
+      const hasActiveTasks = tasks.some((t) => t.state === TaskState.Running);
 
-            if (hasCompletedTasks && isLaunching) {
-                // Brief delay to show completion state
-                const timeout = setTimeout(() => {
-                    setIsLaunching(false);
-                    setProgress(0);
-                }, 1500);
-                return () => clearTimeout(timeout);
-            } else if (!hasLaunchTasks) {
-                setIsLaunching(false);
-                setProgress(0);
-            }
+      if (hasActiveTasks) {
+        if (!isLaunching) {
+          setIsLaunching(true);
         }
+      } else if (isLaunching) {
+        // Brief delay to let the button show "completed"
+        const timeout = setTimeout(() => {
+          setIsLaunching(false);
+          setProgress(0);
+        }, 1500);
+
+        return () => clearTimeout(timeout);
+      }
     }, [tasks, isLaunching]);
 
     const navigate = (page: Page, props: PageProps = {}) => {
