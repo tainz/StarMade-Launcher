@@ -90,6 +90,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 fabricLoader: '',
                 quiltLoader: '',
             },
+            version: item.version,
             icon: item.icon,
             java: item.java,
             maxMemory: item.maxMemory,
@@ -118,6 +119,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             //    as we set it in createInstance, but it's good practice to confirm after install.
             await editInstance({
                 instancePath: newInstancePath,
+                version: item.version,
                 runtime: {
                     minecraft: item.version,
                 },
@@ -139,6 +141,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 fabricLoader: '',
                 quiltLoader: '',
             },
+            version: item.version,
             icon: item.icon,
             java: item.java,
             maxMemory: item.maxMemory,
