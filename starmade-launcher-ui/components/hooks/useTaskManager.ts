@@ -18,8 +18,14 @@ export interface TaskItem {
 declare global {
   interface Window {
     taskMonitor: {
-      on(event: 'task-update', listener: (adds: any[], updates: any[]) => void): void;
-      removeListener(event: 'task-update', listener: (adds: any[], updates: any[]) => void): void;
+      on(
+        event: 'task-update',
+        listener: (payload: { adds: any[]; updates: any[] }) => void
+      ): void;
+      removeListener(
+        event: 'task-update',
+        listener: (payload: { adds: any[]; updates: any[] }) => void
+      ): void;
       subscribe(): Promise<any[]>;
       unsubscribe(): void;
       pause(taskId: string): void;
@@ -38,7 +44,8 @@ export function useTaskManager() {
       id: `${payload.uuid}${payload.id}`,
       taskId: payload.uuid,
       time: new Date(payload.time),
-      message: 'error' in payload ? payload.error : payload.from ?? payload.to ?? '',
+      message:
+        'error' in payload ? payload.error : payload.from ?? payload.to ?? '',
       path: payload.path,
       param: payload.param,
       throughput: 0,
@@ -48,18 +55,21 @@ export function useTaskManager() {
       children: [],
     });
 
-    const onTaskUpdate = (adds: any[], updates: any[]) => {
+    const onTaskUpdate = (payload: { adds: any[]; updates: any[] }) => {
+      const { adds, updates } = payload;
       const cache = cacheRef.current;
 
+      // Handle new tasks
       for (const add of adds) {
         const id = `${add.uuid}${add.id}`;
-        if (cache[id]) continue; // Skip duplicates
+        if (cache[id]) continue;
 
         const item = getTaskItem(add);
         cache[id] = item;
         setTasks((prev) => [item, ...prev]);
       }
 
+      // Handle updates to existing tasks
       for (const update of updates) {
         const id = `${update.uuid}${update.id}`;
         const item = cache[id];
