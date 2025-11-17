@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   JavaRecord,
   JavaServiceKey,
@@ -26,9 +26,18 @@ export function useInstanceJava(
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    if (!instance) return;
+    // Early return if no instance
+    if (!instance) {
+      setStatus(undefined);
+      return;
+    }
+
+    // Flag to prevent state updates after unmount
+    let cancelled = false;
 
     const refresh = async () => {
+      if (cancelled) return;
+      
       setRefreshing(true);
       try {
         const detected = getAutoSelectedJava(
@@ -44,20 +53,41 @@ export function useInstanceJava(
           instance.java
         );
 
-        setStatus({
-          instance: instance.path,
-          javaPath: instance.java,
-          java: result.java ?? result.auto.java,
-          compatible: result.quality,
-          preferredJava: result.auto.java,
-        });
+        // Only update state if component is still mounted
+        if (!cancelled) {
+          setStatus({
+            instance: instance.path,
+            javaPath: instance.java,
+            java: result.java ?? result.auto.java,
+            compatible: result.quality,
+            preferredJava: result.auto.java,
+          });
+        }
+      } catch (error) {
+        console.error('Error checking Java compatibility:', error);
+        if (!cancelled) {
+          setStatus(undefined);
+        }
       } finally {
-        setRefreshing(false);
+        if (!cancelled) {
+          setRefreshing(false);
+        }
       }
     };
 
     refresh();
-  }, [instance, allJava, javaService]);
+
+    // Cleanup function
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    instance?.path,           // Only re-run if instance path changes
+    instance?.version,        // Or if version changes
+    instance?.java,           // Or if Java path changes
+    allJava.length,           // Or if the number of Java installations changes
+    javaService,
+  ]);
 
   return { status, refreshing };
 }

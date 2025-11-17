@@ -4,8 +4,6 @@ import { useData } from './DataContext';
 import { useService } from '../components/hooks/useService';
 import { LaunchServiceKey, LaunchOptions, TaskState, JavaCompatibleState } from '@xmcl/runtime-api';
 import { useTaskManager } from '../components/hooks/useTaskManager';
-import { useInstanceVersionInstall } from '../components/hooks/useInstanceVersionInstall';
-import { useInstanceJava } from '../components/hooks/useInstanceJava';
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -27,31 +25,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     
     // Use the task manager hook
     const { tasks, pause, resume, cancel } = useTaskManager();
-
-    // Get the instance version install hook to check for missing components
-    const { instruction, fix: fixInstanceVersion, loading: fixingInstance } = useInstanceVersionInstall(
-        data.selectedInstance?.path || '',
-        data.installations.map(inst => ({
-            path: inst.id,
-            name: inst.name,
-            version: inst.version,
-            runtime: { minecraft: inst.version },
-            // Map other Instance properties as needed
-        } as any)), // TODO: Properly type this conversion
-        data.javaVersions || []
-    );
-
-    // Get Java validation hook for the selected instance
-    const { status: javaStatus, refreshing: javaRefreshing } = useInstanceJava(
-        data.selectedInstance ? {
-            path: data.selectedInstance.path,
-            name: data.selectedInstance.name,
-            version: data.selectedInstance.version,
-            runtime: { minecraft: data.selectedInstance.version },
-            java: data.selectedInstance.java,
-        } as any : null,
-        data.javaVersions || []
-    );
 
     // Set up game exit handler (Step 7)
     useEffect(() => {
@@ -186,69 +159,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         setIsLaunchModalOpen(false);
         setGameExitError(null); // Clear any previous exit errors
-
-        // Step 6: Java Validation
-        if (javaStatus) {
-            // Check if Java is valid
-            if (!javaStatus.java || !javaStatus.java.valid) {
-                console.error('Invalid or missing Java installation');
-                alert(
-                    'Invalid or missing Java installation.\n\n' +
-                    'Please configure a valid Java installation in Settings.'
-                );
-                return;
-            }
-
-            // Check Java compatibility
-            if (javaStatus.compatible !== JavaCompatibleState.Matched) {
-                const javaVersion = javaStatus.java.version || 'Unknown';
-                const mcVersion = data.selectedInstance.version;
-                
-                console.warn('Java compatibility issue', {
-                    javaVersion,
-                    mcVersion,
-                    compatible: javaStatus.compatible
-                });
-
-                // Ask user if they want to proceed with incompatible Java
-                const proceed = confirm(
-                    `Warning: Java Compatibility Issue\n\n` +
-                    `Java version ${javaVersion} may not be compatible with Minecraft ${mcVersion}.\n\n` +
-                    `This may cause the game to crash or fail to launch.\n\n` +
-                    `Do you want to continue anyway?`
-                );
-
-                if (!proceed) {
-                    return;
-                }
-            }
-        }
-
         setIsLaunching(true); // Optimistically set launching state
 
         try {
-            // Check if there are missing version components that need to be installed
-            if (instruction) {
-                console.log('Missing components detected, installing...', instruction);
-                try {
-                    await fixInstanceVersion();
-                    console.log('Missing components installed successfully');
-                } catch (installError) {
-                    console.error('Failed to install missing version components:', installError);
-                    setIsLaunching(false);
-                    setProgress(0);
-                    // TODO: Show user-friendly error dialog
-                    alert('Failed to install required game files. Please check the logs.');
-                    return;
-                }
-            }
-
-            // Proceed with launch after ensuring all components are installed
+            // TODO: Add Java validation and version installation checks here
+            // These should be done on-demand during launch, not continuously in the component
+            
+            // For now, proceed with basic launch
             const options: LaunchOptions = {
                 version: data.selectedInstance.version,
                 gameDirectory: data.selectedInstance.path,
                 user: data.activeAccount,
-                java: data.selectedInstance.java || javaStatus?.java?.path,
+                java: data.selectedInstance.java,
                 maxMemory: data.selectedInstance.maxMemory,
                 minMemory: data.selectedInstance.minMemory,
                 vmOptions: data.selectedInstance.vmOptions,
@@ -264,17 +186,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             setProgress(0);
             
             // TODO: Parse launch exceptions and show user-friendly errors
-            // For now, show generic error
             const errorMessage = e instanceof Error ? e.message : 'Unknown error';
             alert(`Launch failed: ${errorMessage}`);
         }
     }, [
         data.selectedInstance, 
         data.activeAccount, 
-        launchService, 
-        instruction, 
-        fixInstanceVersion,
-        javaStatus
+        launchService
     ]);
     
     const completeLaunching = () => {
