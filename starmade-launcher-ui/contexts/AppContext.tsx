@@ -13,6 +13,8 @@ import { useService } from '../components/hooks/useService';
 import { LaunchServiceKey, LaunchOptions, TaskState } from '@xmcl/runtime-api';
 import { useTaskManager } from '../components/hooks/useTaskManager';
 import { useInstanceVersionInstall } from '../components/hooks/useInstanceVersionInstall';
+import { useInstanceJava } from '../components/hooks/useInstanceJava';
+import { useInstanceJavaDiagnose } from '../components/hooks/useInstanceJavaDiagnose';
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -35,8 +37,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Task manager (download/install/launch progress)
   const { tasks, pause, resume, cancel } = useTaskManager();
 
-  // Diagnose/fix missing version components for the selected instance
+  // Java selection & status for the selected instance
   const javaVersions = data.javaVersions ?? [];
+  const { status: javaStatus } = useInstanceJava(data.selectedInstance, javaVersions);
+  const { issue: javaIssue } = useInstanceJavaDiagnose(javaStatus);
+
+  // Diagnose/fix missing version components for the selected instance
   const selectedInstanceArray = useMemo(
     () => (data.selectedInstance ? [data.selectedInstance] : []),
     [data.selectedInstance],
@@ -153,6 +159,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return;
     }
 
+    // 0. Java pre‑flight: block or warn if Java is invalid/incompatible.
+    if (javaIssue) {
+      // For now, use alert; later you can replace this with a proper modal.
+      alert(`${javaIssue.title}: ${javaIssue.description}`);
+      setIsLaunchModalOpen(false);
+      return;
+    }
+
     setIsLaunchModalOpen(false);
     setGameExitError(null);
     setIsLaunching(true);
@@ -217,6 +231,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     instruction,
     fix,
     launchService,
+    javaIssue,
   ]);
 
   const completeLaunching = () => {
