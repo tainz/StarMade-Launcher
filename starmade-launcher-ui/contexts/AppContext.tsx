@@ -71,25 +71,59 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Handle game exit (crash / normal exit)
   useEffect(() => {
+    // Support both: (payloadObject) and (exitCode, signal, crashReport, crashReportLocation, errorLog)
     const handleMinecraftExit = (
-      exitCode: number,
-      signal: string,
-      crashReport?: string,
-      crashReportLocation?: string,
-      errorLog?: string,
+      rawExit: any,
+      rawSignal?: any,
+      rawCrashReport?: any,
+      rawCrashReportLocation?: any,
+      rawErrorLog?: any,
     ) => {
-      console.log('Minecraft exited', { exitCode, signal, crashReport, crashReportLocation, errorLog });
+      // XMCL runtime in your environment appears to emit a single payload object
+      // where exit details are in rawExit.exitCode / rawExit.code. Normalize that here.
+      const normalized =
+        rawExit && typeof rawExit === 'object' && ('code' in rawExit || 'exitCode' in rawExit)
+          ? (rawExit.exitCode ?? rawExit)
+          : {
+              code: rawExit,
+              signal: rawSignal,
+              crashReport: rawCrashReport,
+              crashReportLocation: rawCrashReportLocation,
+              errorLog: rawErrorLog,
+            };
 
-      if (exitCode !== 0) {
+      const {
+        code,
+        signal,
+        crashReport,
+        crashReportLocation,
+        errorLog,
+      } = normalized as {
+        code: number;
+        signal?: string;
+        crashReport?: string;
+        crashReportLocation?: string;
+        errorLog?: string;
+      };
+
+      console.log('Minecraft exited', {
+        code,
+        signal,
+        crashReport,
+        crashReportLocation,
+        errorLog,
+      });
+
+      if (code !== 0) {
         console.error('Game crashed or exited with error:', {
-          exitCode,
+          code,
           signal,
           crashReportLocation,
         });
 
-        // Structured crash info for a dedicated crash modal
+        // Structured crash info for the dedicated crash modal
         setGameExitError({
-          code: exitCode,
+          code,
           crashReport,
           crashReportLocation,
           errorLog,
