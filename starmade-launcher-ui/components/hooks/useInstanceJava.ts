@@ -19,7 +19,7 @@ export interface InstanceJavaStatus {
 
 export function useInstanceJava(
   instance: Instance | null,
-  allJava: JavaRecord[]
+  allJava: JavaRecord[],
 ) {
   const javaService = useService(JavaServiceKey);
   const [status, setStatus] = useState<InstanceJavaStatus | undefined>(undefined);
@@ -32,37 +32,50 @@ export function useInstanceJava(
       return;
     }
 
-    // Flag to prevent state updates after unmount
+    // If resolveJava is not available (e.g., in a pure browser context), skip compatibility checks
+    const resolveJavaFn = (javaService as any)?.resolveJava as
+      | ((path: string) => Promise<JavaRecord | undefined>)
+      | undefined;
+
+    if (!resolveJavaFn) {
+      console.warn(
+        'JavaService.resolveJava is not available; skipping Java compatibility check.',
+      );
+      setStatus(undefined);
+      return;
+    }
+
     let cancelled = false;
 
     const refresh = async () => {
       if (cancelled) return;
-      
       setRefreshing(true);
+
       try {
+        // Auto-detect Java based on instance runtime (minecraft/forge)
         const detected = getAutoSelectedJava(
           allJava,
           instance.runtime.minecraft,
           instance.runtime.forge,
-          undefined // version
+          undefined, // no resolved version object in this simplified hook
         );
 
+        // IMPORTANT: pass resolveJava *function*, not the whole service object
         const result = await getAutoOrManuallJava(
           detected,
-          javaService,
-          instance.java
+          resolveJavaFn,
+          instance.java,
         );
 
-        // Only update state if component is still mounted
-        if (!cancelled) {
-          setStatus({
-            instance: instance.path,
-            javaPath: instance.java,
-            java: result.java ?? result.auto.java,
-            compatible: result.quality,
-            preferredJava: result.auto.java,
-          });
-        }
+        if (cancelled) return;
+
+        setStatus({
+          instance: instance.path,
+          javaPath: instance.java,
+          java: result.java ?? result.auto.java,
+          compatible: result.quality,
+          preferredJava: result.auto.java,
+        });
       } catch (error) {
         console.error('Error checking Java compatibility:', error);
         if (!cancelled) {
@@ -77,15 +90,15 @@ export function useInstanceJava(
 
     refresh();
 
-    // Cleanup function
     return () => {
       cancelled = true;
     };
+    // Re-run when instance identity, version, Java path, or count of known Javas changes
   }, [
-    instance?.path,           // Only re-run if instance path changes
-    instance?.version,        // Or if version changes
-    instance?.java,           // Or if Java path changes
-    allJava.length,           // Or if the number of Java installations changes
+    instance?.path,
+    instance?.version,
+    instance?.java,
+    allJava.length,
     javaService,
   ]);
 
