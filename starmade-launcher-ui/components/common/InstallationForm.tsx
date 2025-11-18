@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FolderIcon, MonitorIcon, ChevronDownIcon, CloseIcon, PencilIcon } from './icons';
+import {
+  FolderIcon,
+  MonitorIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  PencilIcon,
+} from './icons';
 import type { ManagedItem, ItemType } from '../../types';
 import { getIconComponent } from '../../utils/getIconComponent';
 import CustomDropdown from './CustomDropdown';
@@ -88,25 +94,52 @@ const IconPickerModal: React.FC<IconPickerModalProps> = ({ onSelect, onClose }) 
     );
 };
 
-const InstallationForm: React.FC<InstallationFormProps> = ({ item, isNew, onSave, onCancel, itemTypeName }) => {
+const InstallationForm: React.FC<InstallationFormProps> = ({
+  item,
+  isNew,
+  onSave,
+  onCancel,
+  itemTypeName,
+}) => {
   const [name, setName] = useState(item.name);
   const [port, setPort] = useState(item.port ?? '4242');
   const [icon, setIcon] = useState(item.icon);
-  const [type, setType] = useState<ItemType>(item.type === 'latest' ? 'release' : item.type);
+  const [type, setType] = useState<ItemType>(
+  (item.type === 'latest' ? 'release' : item.type) || 'release',
+  );
   const [version, setVersion] = useState(item.version);
   const [gameDir, setGameDir] = useState(item.path);
   const [resolution, setResolution] = useState('1920x1080');
+
+  // Java-related state
   const [javaPath, setJavaPath] = useState(item.java ?? '');
   const [javaMemory, setJavaMemory] = useState(item.maxMemory ?? 4096);
   const [jvmArgs, setJvmArgs] = useState(item.vmOptions ?? '');
+
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [isIconPickerOpen, setIconPickerOpen] = useState(false);
 
-  const { minecraftVersions } = useData();
+  const { minecraftVersions, javaVersions } = useData();
 
-  const versionOptions = useMemo(() => {
-    return minecraftVersions.map(v => ({ value: v.id, label: v.id }));
-  }, [minecraftVersions]);
+  const versionOptions = useMemo(
+    () =>
+      minecraftVersions.map((v) => ({
+        value: v.id,
+        label: v.id,
+      })),
+    [minecraftVersions],
+  );
+
+  const javaOptions = useMemo(
+    () => [
+      { value: '', label: 'Auto (recommended)' },
+      ...javaVersions.map((j) => ({
+        value: j.path,
+        label: `${j.version} (${j.path})`,
+      })),
+    ],
+    [javaVersions],
+  );
 
   useEffect(() => {
     const memoryInGB = javaMemory / 1024;
@@ -245,14 +278,31 @@ const InstallationForm: React.FC<InstallationFormProps> = ({ item, isNew, onSave
                             <MemorySlider value={javaMemory} onChange={setJavaMemory} />
                         </FormField>
 
-                        <FormField label="Java Executable Path" htmlFor="javaPath">
-                          <div className="flex">
-                            <input id="javaPath" type="text" value={javaPath} onChange={e => setJavaPath(e.target.value)} className="flex-1 bg-slate-900/80 border border-slate-700 rounded-l-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent" />
-                            <button className="bg-slate-800/80 border-t border-b border-r border-slate-700 px-4 rounded-r-md hover:bg-slate-700/80"><FolderIcon className="w-5 h-5 text-gray-400" /></button>
+                        <FormField label="Java Executable" htmlFor="javaPath">
+                          <div className="flex flex-col gap-2">
+                            <CustomDropdown
+                              options={javaOptions}
+                              value={javaPath || ''}
+                              onChange={(val) => setJavaPath(val || '')}
+                              className="w-full"
+                            />
+                            <div className="flex">
+                              <input
+                                id="javaPath"
+                                type="text"
+                                value={javaPath}
+                                onChange={(e) => setJavaPath(e.target.value)}
+                                className="flex-1 bg-slate-900/80 border border-slate-700 rounded-l-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
+                                placeholder="Custom Java executable path (optional)"
+                              />
+                              <button
+                                className="bg-slate-800/80 border-t border-b border-r border-slate-700 px-4 rounded-r-md hover:bg-slate-700/80"
+                                type="button"
+                              >
+                                <FolderIcon className="w-5 h-5 text-gray-400" />
+                              </button>
+                            </div>
                           </div>
-                        </FormField>
-                        <FormField label="JVM Arguments" htmlFor="jvmArgs">
-                          <textarea id="jvmArgs" value={jvmArgs} onChange={e => setJvmArgs(e.target.value)} rows={2} className="bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent font-mono text-sm"></textarea>
                         </FormField>
                     </div>
                 )}
