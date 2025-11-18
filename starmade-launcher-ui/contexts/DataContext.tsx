@@ -1,5 +1,3 @@
-// starmade-launcher-ui/contexts/DataContext.tsx
-
 import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback, useEffect } from 'react';
 import type { DataContextType as OriginalDataContextType, ManagedItem, Version } from '../types';
 import { useUserState } from '../components/hooks/useUserState';
@@ -46,13 +44,34 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [minecraftVersions, setMinecraftVersions] = useState<MinecraftVersion[]>([]);
     const [latestReleaseId, setLatestReleaseId] = useState<string | null>(null);
 
+    // Step 1 – Solidify live Minecraft version data in DataContext
     useEffect(() => {
-        getMinecraftVersionList().then((list) => {
-            setMinecraftVersions(list.versions);
-            setLatestReleaseId(list.latest.release);
-        }).catch(err => {
-            console.error("Failed to fetch Minecraft versions:", err);
-        });
+        let cancelled = false;
+
+        const loadVersions = async () => {
+            try {
+                const list = await getMinecraftVersionList();
+                if (cancelled) return;
+
+                setMinecraftVersions(list.versions); // MinecraftVersion[]
+
+                const latestId =
+                    (list.latest && (list.latest.release || list.latest.snapshot)) || null;
+
+                setLatestReleaseId(latestId);
+            } catch (e) {
+                console.error('Failed to load Minecraft versions', e);
+                if (cancelled) return;
+                setMinecraftVersions([]);
+                setLatestReleaseId(null);
+            }
+        };
+
+        loadVersions();
+
+        return () => {
+            cancelled = true;
+        };
     }, [getMinecraftVersionList]);
 
     const selectedInstance = useMemo(() => {
@@ -75,8 +94,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       port: i.server?.host,
     }), []);
 
-    const installations = useMemo(() => instances.filter(i => !i.server).map(mapInstanceToManagedItem), [instances, mapInstanceToManagedItem]);
-    const servers = useMemo(() => instances.filter(i => !!i.server).map(mapInstanceToManagedItem), [instances, mapInstanceToManagedItem]);
+    const installations = useMemo(
+        () => instances.filter(i => !i.server).map(mapInstanceToManagedItem),
+        [instances, mapInstanceToManagedItem],
+    );
+    const servers = useMemo(
+        () => instances.filter(i => !!i.server).map(mapInstanceToManagedItem),
+        [instances, mapInstanceToManagedItem],
+    );
     
     const [versions, setVersions] = useState<Version[]>(versionsData);
     const [selectedVersion, setSelectedVersion] = useState<Version | null>(versionsData[0] || null);
@@ -94,7 +119,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             icon: item.icon,
             java: item.java,
             maxMemory: item.maxMemory,
-            minMemory: item.minMemory,
+            minMemory: item.maxMemory,
             vmOptions: item.vmOptions?.split(' ').filter(v => v),
         };
 
@@ -115,8 +140,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             // 3. Trigger the installation of the Minecraft version to the shared versions directory.
             await installMinecraft(versionMeta);
 
-            // 4. Edit the instance to ensure the version is set. This is somewhat redundant
-            //    as we set it in createInstance, but it's good practice to confirm after install.
+            // 4. Edit the instance to ensure the version is set.
             await editInstance({
                 instancePath: newInstancePath,
                 version: item.version,
@@ -198,11 +222,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const deleteServer = useCallback((id: string) => deleteInstance(id), [deleteInstance]);
 
-    const getInstallationDefaults = useCallback(() => ({ 
-        ...defaultInstallationData, 
-        version: latestReleaseId || defaultInstallationData.version,
-        id: Date.now().toString() 
-    }), [latestReleaseId]);
+    const getInstallationDefaults = useCallback(
+        () => ({ 
+            ...defaultInstallationData, 
+            version: latestReleaseId || defaultInstallationData.version,
+            id: Date.now().toString(),
+        }),
+        [latestReleaseId],
+    );
 
     const getServerDefaults = () => ({ ...defaultServerData, id: Date.now().toString() });
     
@@ -238,7 +265,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
-}
+};
 
 export const useData = (): DataContextType => {
     const context = useContext(DataContext);
@@ -246,4 +273,4 @@ export const useData = (): DataContextType => {
         throw new Error('useData must be used within a DataProvider');
     }
     return context;
-}
+};
