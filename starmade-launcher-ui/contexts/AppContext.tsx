@@ -16,7 +16,21 @@ import { useInstanceVersionInstall } from '../components/hooks/useInstanceVersio
 import { useInstanceJava } from '../components/hooks/useInstanceJava';
 import { useInstanceJavaDiagnose } from '../components/hooks/useInstanceJavaDiagnose';
 
-const AppContext = createContext<AppContextType | undefined>(undefined);
+// Structured launch error type for pre‑launch failures
+type LaunchError = {
+  title: string;
+  description: string;
+  extraText?: string;
+};
+
+// Internal context type extends the shared AppContextType
+type InternalAppContextType = AppContextType & {
+  launchError: LaunchError | null;
+  clearLaunchError: () => void;
+  fixingVersion?: boolean;
+};
+
+const AppContext = createContext<InternalAppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [activePage, setActivePage] = useState<Page>('Play');
@@ -30,6 +44,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     crashReportLocation?: string;
     errorLog?: string;
   } | null>(null);
+  const [launchError, setLaunchError] = useState<LaunchError | null>(null);
 
   const data = useData();
   const launchService = useService(LaunchServiceKey);
@@ -54,6 +69,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     javaVersions,
   );
 
+  const value: InternalAppContextType = {
+    // ...existing fields...
+    fixingVersion,
+  };
+
   // Handle game exit (crash / normal exit)
   useEffect(() => {
     const handleMinecraftExit = (
@@ -72,19 +92,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           crashReportLocation,
         });
 
+        // Structured crash info for a dedicated crash modal
         setGameExitError({
           code: exitCode,
           crashReport,
           crashReportLocation,
           errorLog,
         });
-
-        const message = crashReportLocation
-          ? `Game crashed! Exit code: ${exitCode}\n\nCrash report saved to:\n${crashReportLocation}`
-          : `Game exited with error code: ${exitCode}`;
-
-        // TODO: Replace alert with a proper crash modal
-        alert(message);
       } else {
         console.log('Game exited normally');
       }
@@ -156,19 +170,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!data.selectedInstance || !data.activeAccount) {
       console.error('Cannot launch without a selected instance and active account.');
       setIsLaunchModalOpen(false);
+      setLaunchError({
+        title: 'Cannot Launch',
+        description: 'Please select an installation and log in with a Minecraft account before launching.',
+      });
       return;
     }
 
     // 0. Java pre‑flight: block or warn if Java is invalid/incompatible.
     if (javaIssue) {
-      // For now, use alert; later you can replace this with a proper modal.
-      alert(`${javaIssue.title}: ${javaIssue.description}`);
       setIsLaunchModalOpen(false);
+      setLaunchError({
+        title: javaIssue.title,
+        description: javaIssue.description,
+      });
       return;
     }
 
     setIsLaunchModalOpen(false);
     setGameExitError(null);
+    setLaunchError(null);
     setIsLaunching(true);
 
     try {
@@ -182,9 +203,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         );
         setIsLaunching(false);
         setProgress(0);
-        alert(
-          'This instance does not have a Minecraft version configured. Please edit the installation and select a version.',
-        );
+        setLaunchError({
+          title: 'Missing Minecraft Version',
+          description:
+            'This installation does not have a Minecraft version configured. Please edit the installation and select a version before launching.',
+        });
         return;
       }
 
@@ -222,8 +245,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setProgress(0);
 
       const errorMessage = e instanceof Error ? e.message : 'Unknown error';
-      // TODO: replace with structured launch error modal
-      alert(`Launch failed: ${errorMessage}`);
+      setLaunchError({
+        title: 'Launch Failed',
+        description: 'The game failed to start due to an unexpected error.',
+        extraText: errorMessage,
+      });
     }
   }, [
     data.selectedInstance,
@@ -243,7 +269,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setGameExitError(null);
   };
 
-  const value: AppContextType = {
+  const clearLaunchError = () => {
+    setLaunchError(null);
+  };
+
+  const value: InternalAppContextType = {
     activePage,
     pageProps,
     isLaunchModalOpen,
@@ -260,12 +290,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     cancelTask: cancel,
     gameExitError,
     clearGameExitError,
+    launchError,
+    clearLaunchError,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
 
-export const useApp = (): AppContextType => {
+export const useApp = (): InternalAppContextType => {
   const context = useContext(AppContext);
   if (context === undefined) {
     throw new Error('useApp must be used within an AppProvider');
