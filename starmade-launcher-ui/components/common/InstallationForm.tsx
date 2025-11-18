@@ -20,79 +20,102 @@ interface InstallationFormProps {
   itemTypeName: string;
 }
 
-const FormField: React.FC<{ label: string; htmlFor: string; children: React.ReactNode, className?: string }> = ({ label, htmlFor, children, className }) => (
+const FormField: React.FC<{
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+  className?: string;
+}> = ({ label, htmlFor, children, className }) => (
   <div className={`flex flex-col gap-2 ${className}`}>
-    <label htmlFor={htmlFor} className="text-sm font-semibold text-gray-300 uppercase tracking-wider">{label}</label>
+    <label
+      htmlFor={htmlFor}
+      className="text-sm font-semibold text-gray-300 uppercase tracking-wider"
+    >
+      {label}
+    </label>
     {children}
   </div>
 );
 
-const branches: { value: ItemType, label: string }[] = [
+const branches: { value: ItemType; label: string }[] = [
   { value: 'release', label: 'Release' },
   { value: 'dev', label: 'Dev' },
   { value: 'pre', label: 'Pre-Release' },
   { value: 'archive', label: 'Archive' },
 ];
 
-const resolutions = ["1280x720", "1920x1080", "2560x1440", "3840x2160"];
+const resolutions = ['1280x720', '1920x1080', '2560x1440', '3840x2160'];
 
 const availableIcons: { icon: string; name: string }[] = [
-    { icon: 'release', name: 'Release' },
-    { icon: 'dev', name: 'Dev Build' },
-    { icon: 'pre', name: 'Pre-release' },
-    { icon: 'archive', name: 'Archive' },
-    { icon: 'rocket', name: 'Rocket' },
-    { icon: 'planet', name: 'Planet' },
-    { icon: 'star', name: 'Star' },
-    { icon: 'server', name: 'Server' },
-    { icon: 'code', name: 'Code' },
-    { icon: 'bolt', name: 'Bolt' },
-    { icon: 'beaker', name: 'Beaker' },
-    { icon: 'cube', name: 'Cube' },
+  { icon: 'release', name: 'Release' },
+  { icon: 'dev', name: 'Dev Build' },
+  { icon: 'pre', name: 'Pre-release' },
+  { icon: 'archive', name: 'Archive' },
+  { icon: 'rocket', name: 'Rocket' },
+  { icon: 'planet', name: 'Planet' },
+  { icon: 'star', name: 'Star' },
+  { icon: 'server', name: 'Server' },
+  { icon: 'code', name: 'Code' },
+  { icon: 'bolt', name: 'Bolt' },
+  { icon: 'beaker', name: 'Beaker' },
+  { icon: 'cube', name: 'Cube' },
 ];
 
 interface IconPickerModalProps {
-    onSelect: (icon: string) => void;
-    onClose: () => void;
+  onSelect: (icon: string) => void;
+  onClose: () => void;
 }
 
-const IconPickerModal: React.FC<IconPickerModalProps> = ({ onSelect, onClose }) => {
-    return (
-        <div 
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center"
+const IconPickerModal: React.FC<IconPickerModalProps> = ({
+  onSelect,
+  onClose,
+}) => {
+  return (
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="bg-slate-900/90 border border-slate-700 rounded-lg shadow-xl p-6 w-full max-w-2xl relative animate-fade-in-scale"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="font-display text-2xl font-bold uppercase text-white tracking-wider">
+            Choose an Icon
+          </h2>
+          <button
             onClick={onClose}
-        >
-            <div 
-                className="bg-slate-900/90 border border-slate-700 rounded-lg shadow-xl p-6 w-full max-w-2xl relative animate-fade-in-scale"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className="font-display text-2xl font-bold uppercase text-white tracking-wider">Choose an Icon</h2>
-                    <button onClick={onClose} className="p-1.5 rounded-md hover:bg-starmade-danger/20 transition-colors">
-                        <CloseIcon className="w-5 h-5 text-gray-400 hover:text-starmade-danger-light" />
-                    </button>
-                </div>
-                <div className="grid grid-cols-4 gap-4">
-                    {availableIcons.map(({ icon, name }) => (
-                        <button 
-                            key={icon} 
-                            onClick={() => {
-                                onSelect(icon);
-                                onClose();
-                            }}
-                            className="flex flex-col items-center justify-center gap-3 p-4 bg-black/20 rounded-lg border border-white/10 hover:border-starmade-accent hover:bg-starmade-accent/10 transition-all group"
-                        >
-                            <div className="w-20 h-20 flex items-center justify-center">
-                                {getIconComponent(icon, 'large')}
-                            </div>
-                            <span className="text-sm font-semibold text-gray-300 group-hover:text-white">{name}</span>
-                        </button>
-                    ))}
-                </div>
-            </div>
+            className="p-1.5 rounded-md hover:bg-starmade-danger/20 transition-colors"
+          >
+            <CloseIcon className="w-5 h-5 text-gray-400 hover:text-starmade-danger-light" />
+          </button>
         </div>
-    );
+        <div className="grid grid-cols-4 gap-4">
+          {availableIcons.map(({ icon, name }) => (
+            <button
+              key={icon}
+              onClick={() => {
+                onSelect(icon);
+                onClose();
+              }}
+              className="flex flex-col items-center justify-center gap-3 p-4 bg-black/20 rounded-lg border border-white/10 hover:border-starmade-accent hover:bg-starmade-accent/10 transition-all group"
+            >
+              <div className="w-20 h-20 flex items-center justify-center">
+                {getIconComponent(icon, 'large')}
+              </div>
+              <span className="text-sm font-semibold text-gray-300 group-hover:text-white">
+                {name}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 };
+
+// Special value used in the Java dropdown for "Custom Path..."
+const CUSTOM_JAVA_VALUE = '__custom__';
 
 const InstallationForm: React.FC<InstallationFormProps> = ({
   item,
@@ -105,21 +128,20 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   const [port, setPort] = useState(item.port ?? '4242');
   const [icon, setIcon] = useState(item.icon);
   const [type, setType] = useState<ItemType>(
-  (item.type === 'latest' ? 'release' : item.type) || 'release',
+    (item.type === 'latest' ? 'release' : item.type) || 'release',
   );
   const [version, setVersion] = useState(item.version);
   const [gameDir, setGameDir] = useState(item.path);
   const [resolution, setResolution] = useState('1920x1080');
 
   // Java-related state
-  const [javaPath, setJavaPath] = useState(item.java ?? '');
   const [javaMemory, setJavaMemory] = useState(item.maxMemory ?? 4096);
   const [jvmArgs, setJvmArgs] = useState(item.vmOptions ?? '');
 
-  const [showMoreOptions, setShowMoreOptions] = useState(false);
-  const [isIconPickerOpen, setIconPickerOpen] = useState(false);
-
+  // Java selection state for dropdown + custom path
   const { minecraftVersions, javaVersions } = useData();
+  const [javaSelection, setJavaSelection] = useState<string>('');
+  const [customJavaPath, setCustomJavaPath] = useState('');
 
   const versionOptions = useMemo(
     () =>
@@ -133,63 +155,114 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   const javaOptions = useMemo(
     () => [
       { value: '', label: 'Auto (recommended)' },
-      ...javaVersions.map((j) => ({
-        value: j.path,
-        label: `${j.version} (${j.path})`,
-      })),
+      ...javaVersions
+        .filter((j) => !!j.path) // ignore entries without a path
+        .map((j) => ({
+          value: j.path!,
+          label: `${j.version || 'Unknown version'} (${j.path})`,
+        })),
+      { value: CUSTOM_JAVA_VALUE, label: 'Custom Path...' },
     ],
     [javaVersions],
   );
 
+  // Initialize javaSelection/customJavaPath from existing item.java
+  useEffect(() => {
+    if (!item.java) {
+      setJavaSelection('');
+      setCustomJavaPath('');
+      return;
+    }
+    const known = javaVersions.find((j) => j.path === item.java);
+    if (known) {
+      setJavaSelection(known.path);
+      setCustomJavaPath('');
+    } else {
+      setJavaSelection(CUSTOM_JAVA_VALUE);
+      setCustomJavaPath(item.java);
+    }
+  }, [item.java, javaVersions]);
+
   useEffect(() => {
     const memoryInGB = javaMemory / 1024;
-    setJvmArgs(prevArgs => {
-        const otherArgs = prevArgs.split(' ').filter(arg => !arg.startsWith('-Xm')).join(' ');
-        return `-Xms${memoryInGB}G -Xmx${memoryInGB}G ${otherArgs}`.trim();
+    setJvmArgs((prevArgs) => {
+      const otherArgs = prevArgs
+        .split(' ')
+        .filter((arg) => !arg.startsWith('-Xm'))
+        .join(' ');
+      return `-Xms${memoryInGB}G -Xmx${memoryInGB}G ${otherArgs}`.trim();
     });
   }, [javaMemory]);
 
   useEffect(() => {
     const xmxMatch = jvmArgs.match(/-Xmx(\d+)G/i);
     if (xmxMatch && xmxMatch[1]) {
-        const memoryInGB = parseInt(xmxMatch[1]);
-        const memoryInMB = memoryInGB * 1024;
-        setJavaMemory(prev => (prev !== memoryInMB ? memoryInMB : prev));
+      const memoryInGB = parseInt(xmxMatch[1], 10);
+      const memoryInMB = memoryInGB * 1024;
+      setJavaMemory((prev) => (prev !== memoryInMB ? memoryInMB : prev));
     }
   }, [jvmArgs]);
 
   const handleSaveClick = () => {
+    // Derive the effective java value from the selection:
+    // - '' => Auto (undefined, let launcher choose)
+    // - CUSTOM_JAVA_VALUE => customJavaPath (if non-empty)
+    // - otherwise => selected discovered Java path
+    const effectiveJava =
+      javaSelection === ''
+        ? undefined
+        : javaSelection === CUSTOM_JAVA_VALUE
+        ? customJavaPath || undefined
+        : javaSelection;
+
     onSave({
-        ...item,
-        name,
-        type,
-        icon,
-        version,
-        path: gameDir,
-        ...(itemTypeName === 'Server' && { port }),
-        java: javaPath,
-        maxMemory: javaMemory,
-        vmOptions: jvmArgs,
+      ...item,
+      name,
+      type,
+      icon,
+      version,
+      path: gameDir,
+      ...(itemTypeName === 'Server' && { port }),
+      java: effectiveJava,
+      maxMemory: javaMemory,
+      vmOptions: jvmArgs,
     });
-  }
+  };
 
   const title = isNew ? `New ${itemTypeName}` : `Edit ${itemTypeName}`;
   const saveButtonText = isNew ? 'Create' : 'Save';
 
-  const resolutionOptions = resolutions.map(res => ({ value: res, label: res }));
+  const resolutionOptions = resolutions.map((res) => ({
+    value: res,
+    label: res,
+  }));
+
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [isIconPickerOpen, setIconPickerOpen] = useState(false);
 
   return (
     <div className="h-full flex flex-col text-white">
-      {isIconPickerOpen && <IconPickerModal onSelect={setIcon} onClose={() => setIconPickerOpen(false)} />}
+      {isIconPickerOpen && (
+        <IconPickerModal
+          onSelect={setIcon}
+          onClose={() => setIconPickerOpen(false)}
+        />
+      )}
       <div className="flex justify-between items-center mb-6 flex-shrink-0 pr-4">
         <h1 className="font-display text-3xl font-bold uppercase tracking-wider">
           {title}
         </h1>
         <div className="flex items-center gap-4">
-          <button onClick={onCancel} className="px-4 py-2 rounded-md hover:bg-white/10 transition-colors text-sm font-semibold uppercase tracking-wider">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-md hover:bg-white/10 transition-colors text-sm font-semibold uppercase tracking-wider"
+          >
             Cancel
           </button>
-          <button onClick={handleSaveClick} className="px-6 py-2 rounded-md bg-starmade-accent hover:bg-starmade-accent-hover transition-colors text-sm font-bold uppercase tracking-wider">
+          <button
+            onClick={handleSaveClick}
+            className="px-6 py-2 rounded-md bg-starmade-accent hover:bg-starmade-accent-hover transition-colors text-sm font-bold uppercase tracking-wider"
+          >
             {saveButtonText}
           </button>
         </div>
@@ -206,7 +279,9 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
               {getIconComponent(icon, 'large')}
               <div className="absolute inset-0 bg-black/60 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 text-white">
                 <PencilIcon className="w-8 h-8" />
-                <span className="text-xs uppercase font-bold tracking-wider">Change Icon</span>
+                <span className="text-xs uppercase font-bold tracking-wider">
+                  Change Icon
+                </span>
               </div>
             </button>
             <p className="text-sm text-gray-400">Click to change icon</p>
@@ -216,19 +291,41 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
             {itemTypeName === 'Server' ? (
               <>
                 <FormField label="Name" htmlFor="itemName">
-                  <input id="itemName" type="text" value={name} onChange={e => setName(e.target.value)} className="bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent" />
+                  <input
+                    id="itemName"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
+                  />
                 </FormField>
                 <FormField label="Port" htmlFor="itemPort">
-                  <input id="itemPort" type="text" value={port} onChange={e => setPort(e.target.value)} className="bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent" />
+                  <input
+                    id="itemPort"
+                    type="text"
+                    value={port}
+                    onChange={(e) => setPort(e.target.value)}
+                    className="bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
+                  />
                 </FormField>
               </>
             ) : (
-              <FormField label="Name" htmlFor="itemName" className="col-span-2">
-                <input id="itemName" type="text" value={name} onChange={e => setName(e.target.value)} className="bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent" />
+              <FormField
+                label="Name"
+                htmlFor="itemName"
+                className="col-span-2"
+              >
+                <input
+                  id="itemName"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
+                />
               </FormField>
             )}
             <FormField label="Branch" htmlFor="itemBranch">
-              <CustomDropdown 
+              <CustomDropdown
                 options={branches}
                 value={type}
                 onChange={(v) => setType(v as ItemType)}
@@ -247,66 +344,94 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
         <div className="grid grid-cols-2 gap-x-8 gap-y-6">
           <FormField label="Game Directory" htmlFor="gameDir">
             <div className="flex">
-              <input id="gameDir" type="text" value={gameDir} onChange={e => setGameDir(e.target.value)} className="flex-1 bg-slate-900/80 border border-slate-700 rounded-l-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent" />
-              <button className="bg-slate-800/80 border-t border-b border-r border-slate-700 px-4 rounded-r-md hover:bg-slate-700/80"><FolderIcon className="w-5 h-5 text-gray-400" /></button>
+              <input
+                id="gameDir"
+                type="text"
+                value={gameDir}
+                onChange={(e) => setGameDir(e.target.value)}
+                className="flex-1 bg-slate-900/80 border border-slate-700 rounded-l-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
+              />
+              <button
+                className="bg-slate-800/80 border-t border-b border-r border-slate-700 px-4 rounded-r-md hover:bg-slate-700/80"
+                type="button"
+              >
+                <FolderIcon className="w-5 h-5 text-gray-400" />
+              </button>
             </div>
           </FormField>
           <FormField label="Resolution" htmlFor="resolution">
             <CustomDropdown
-                options={resolutionOptions}
-                value={resolution}
-                onChange={setResolution}
-                icon={<MonitorIcon className="w-5 h-5 text-gray-400" />}
+              options={resolutionOptions}
+              value={resolution}
+              onChange={setResolution}
+              icon={<MonitorIcon className="w-5 h-5 text-gray-400" />}
             />
           </FormField>
 
-            <div className="col-span-2">
-                <hr className="border-slate-800 my-2" />
-                <button
-                    onClick={() => setShowMoreOptions(!showMoreOptions)}
-                    className="w-full flex justify-between items-center p-2 rounded-md hover:bg-white/5 transition-colors"
-                    aria-expanded={showMoreOptions}
-                    aria-controls="more-options-panel"
+          <div className="col-span-2">
+            <hr className="border-slate-800 my-2" />
+            <button
+              onClick={() => setShowMoreOptions(!showMoreOptions)}
+              className="w-full flex justify-between items-center p-2 rounded-md hover:bg-white/5 transition-colors"
+              aria-expanded={showMoreOptions}
+              aria-controls="more-options-panel"
+            >
+              <span className="text-base font-semibold text-gray-300 uppercase tracking-wider">
+                More Options
+              </span>
+              <ChevronDownIcon
+                className={`w-5 h-5 text-gray-400 transition-transform ${
+                  showMoreOptions ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+
+            {showMoreOptions && (
+              <div
+                id="more-options-panel"
+                className="mt-6 grid grid-cols-2 gap-x-8 gap-y-6 animate-fade-in-scale"
+              >
+                <FormField
+                  label="Java Memory Allocation"
+                  htmlFor="javaMemory"
+                  className="col-span-2"
                 >
-                    <span className="text-base font-semibold text-gray-300 uppercase tracking-wider">More Options</span>
-                    <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform ${showMoreOptions ? 'rotate-180' : ''}`} />
-                </button>
+                  <MemorySlider value={javaMemory} onChange={setJavaMemory} />
+                </FormField>
 
-                {showMoreOptions && (
-                    <div id="more-options-panel" className="mt-6 grid grid-cols-2 gap-x-8 gap-y-6 animate-fade-in-scale">
-                        <FormField label="Java Memory Allocation" htmlFor="javaMemory" className="col-span-2">
-                            <MemorySlider value={javaMemory} onChange={setJavaMemory} />
-                        </FormField>
+                <FormField label="Java Executable" htmlFor="javaPath">
+                  <div className="flex flex-col gap-2">
+                    <CustomDropdown
+                      options={javaOptions}
+                      value={javaSelection}
+                      onChange={(val) => setJavaSelection(val)}
+                      className="w-full"
+                      dropUp
+                    />
 
-                        <FormField label="Java Executable" htmlFor="javaPath">
-                          <div className="flex flex-col gap-2">
-                            <CustomDropdown
-                              options={javaOptions}
-                              value={javaPath || ''}
-                              onChange={(val) => setJavaPath(val || '')}
-                              className="w-full"
-                            />
-                            <div className="flex">
-                              <input
-                                id="javaPath"
-                                type="text"
-                                value={javaPath}
-                                onChange={(e) => setJavaPath(e.target.value)}
-                                className="flex-1 bg-slate-900/80 border border-slate-700 rounded-l-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
-                                placeholder="Custom Java executable path (optional)"
-                              />
-                              <button
-                                className="bg-slate-800/80 border-t border-b border-r border-slate-700 px-4 rounded-r-md hover:bg-slate-700/80"
-                                type="button"
-                              >
-                                <FolderIcon className="w-5 h-5 text-gray-400" />
-                              </button>
-                            </div>
-                          </div>
-                        </FormField>
-                    </div>
-                )}
-            </div>
+                    {javaSelection === CUSTOM_JAVA_VALUE && (
+                      <div className="flex">
+                        <input
+                          id="javaPath"
+                          type="text"
+                          value={customJavaPath}
+                          onChange={(e) => setCustomJavaPath(e.target.value)}
+                          className="flex-1 bg-slate-900/80 border border-slate-700 rounded-l-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
+                          placeholder="Custom Java executable path"
+                        />
+                        <button
+                          className="bg-slate-800/80 border-t border-b border-r border-slate-700 px-4 rounded-r-md hover:bg-slate-700/80"
+                          type="button"
+                        >
+                          <FolderIcon className="w-5 h-5 text-gray-400" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </FormField>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
