@@ -69,11 +69,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     javaVersions,
   );
 
-  const value: InternalAppContextType = {
-    // ...existing fields...
-    fixingVersion,
-  };
-
   // Handle game exit (crash / normal exit)
   useEffect(() => {
     const handleMinecraftExit = (
@@ -172,7 +167,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setIsLaunchModalOpen(false);
       setLaunchError({
         title: 'Cannot Launch',
-        description: 'Please select an installation and log in with a Minecraft account before launching.',
+        description:
+          'Please select an installation and log in with a Minecraft account before launching.',
       });
       return;
     }
@@ -292,6 +288,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     clearGameExitError,
     launchError,
     clearLaunchError,
+    fixingVersion,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
