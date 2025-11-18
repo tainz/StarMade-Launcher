@@ -19,6 +19,40 @@ export interface DataContextType extends OriginalDataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+// Step 2 – Normalize instance runtime mapping helpers
+const toRuntimeFromManaged = (item: ManagedItem) => ({
+    minecraft: item.version,
+    forge: '',
+    fabricLoader: '',
+    quiltLoader: '',
+    // Other runtime fields (optifine, neoForged, etc.) can be added later as needed
+});
+
+const toCreateOptionsFromItem = (item: ManagedItem): CreateInstanceOption => ({
+    name: item.name,
+    runtime: toRuntimeFromManaged(item),
+    version: item.version,
+    icon: item.icon,
+    java: item.java,
+    maxMemory: item.maxMemory,
+    minMemory: item.minMemory,
+    vmOptions: item.vmOptions?.split(' ').filter(v => v),
+    mcOptions: item.mcOptions?.split(' ').filter(v => v),
+});
+
+const toEditOptionsFromItem = (item: ManagedItem): EditInstanceOptions & { instancePath: string } => ({
+    instancePath: item.id, // In this app, id == instance path
+    name: item.name,
+    runtime: toRuntimeFromManaged(item),
+    version: item.version,
+    icon: item.icon,
+    java: item.java,
+    maxMemory: item.maxMemory,
+    minMemory: item.minMemory,
+    vmOptions: item.vmOptions?.split(' ').filter(v => v),
+    mcOptions: item.mcOptions?.split(' ').filter(v => v),
+});
+
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const { 
         users, 
@@ -107,21 +141,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [selectedVersion, setSelectedVersion] = useState<Version | null>(versionsData[0] || null);
 
     const addInstallation = useCallback(async (item: ManagedItem) => {
-        const options: CreateInstanceOption = {
-            name: item.name,
-            runtime: {
-                minecraft: item.version,
-                forge: '',
-                fabricLoader: '',
-                quiltLoader: '',
-            },
-            version: item.version,
-            icon: item.icon,
-            java: item.java,
-            maxMemory: item.maxMemory,
-            minMemory: item.maxMemory,
-            vmOptions: item.vmOptions?.split(' ').filter(v => v),
-        };
+        const options: CreateInstanceOption = toCreateOptionsFromItem(item);
 
         try {
             // 1. Create the instance record. The backend will generate the path.
@@ -140,13 +160,11 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             // 3. Trigger the installation of the Minecraft version to the shared versions directory.
             await installMinecraft(versionMeta);
 
-            // 4. Edit the instance to ensure the version is set.
+            // 4. Edit the instance to ensure the version and runtime are set.
             await editInstance({
                 instancePath: newInstancePath,
                 version: item.version,
-                runtime: {
-                    minecraft: item.version,
-                },
+                runtime: toRuntimeFromManaged(item),
             });
 
         } catch (e) {
@@ -156,66 +174,30 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [createInstance, minecraftVersions, installMinecraft, editInstance]);
 
     const updateInstallation = useCallback((item: ManagedItem) => {
-        const options: EditInstanceOptions & { instancePath: string } = {
-            instancePath: item.id, // This is now correct (it's the path)
-            name: item.name,
-            runtime: {
-                minecraft: item.version,
-                forge: '',
-                fabricLoader: '',
-                quiltLoader: '',
-            },
-            version: item.version,
-            icon: item.icon,
-            java: item.java,
-            maxMemory: item.maxMemory,
-            minMemory: item.minMemory,
-            vmOptions: item.vmOptions?.split(' ').filter(v => v),
-        };
+        const options: EditInstanceOptions & { instancePath: string } = toEditOptionsFromItem(item);
         editInstance(options);
     }, [editInstance]);
 
     const deleteInstallation = useCallback((id: string) => deleteInstance(id), [deleteInstance]);
     
     const addServer = useCallback((item: ManagedItem) => {
+        const baseOptions = toCreateOptionsFromItem(item);
         const options: CreateInstanceOption = {
-            name: item.name,
-            runtime: {
-                minecraft: item.version,
-                forge: '',
-                fabricLoader: '',
-                quiltLoader: '',
-            },
+            ...baseOptions,
             server: {
                 host: item.port || '127.0.0.1',
             },
-            icon: item.icon,
-            java: item.java,
-            maxMemory: item.maxMemory,
-            minMemory: item.minMemory,
-            vmOptions: item.vmOptions?.split(' ').filter(v => v),
         };
         createInstance(options);
     }, [createInstance]);
 
     const updateServer = useCallback((item: ManagedItem) => {
+        const baseOptions: EditInstanceOptions & { instancePath: string } = toEditOptionsFromItem(item);
         const options: EditInstanceOptions & { instancePath: string } = {
-            instancePath: item.id,
-            name: item.name,
-            runtime: {
-                minecraft: item.version,
-                forge: '',
-                fabricLoader: '',
-                quiltLoader: '',
-            },
+            ...baseOptions,
             server: {
                 host: item.port || '127.0.0.1',
             },
-            icon: item.icon,
-            java: item.java,
-            maxMemory: item.maxMemory,
-            minMemory: item.minMemory,
-            vmOptions: item.vmOptions?.split(' ').filter(v => v),
         };
         editInstance(options);
     }, [editInstance]);
