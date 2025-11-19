@@ -1,13 +1,13 @@
-import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
 import type { DataContextType as OriginalDataContextType, ManagedItem, Version } from '../types';
 import { useUserState } from '../components/hooks/useUserState';
 import { useInstanceServiceState } from '../components/hooks/useInstanceServiceState';
 import { versionsData, defaultInstallationData, defaultServerData } from '../data/mockData';
 import { CreateInstanceOption, EditInstanceOptions, Instance, MinecraftVersion } from '@xmcl/runtime-api';
-import { useVersionService } from '../components/hooks/useVersionService';
 import { useInstallService } from '../components/hooks/useInstallService';
 import { useJavaContext } from '../components/hooks/useJavaContext';
 import { useInstanceCreation } from '../components/hooks/useInstanceCreation';
+import { useVersionState } from '../components/hooks/useVersionState';
 
 export interface DataContextType extends OriginalDataContextType {
     loginMicrosoft: () => Promise<any>;
@@ -54,6 +54,7 @@ const toEditOptionsFromItem = (item: ManagedItem): EditInstanceOptions & { insta
 });
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    // 1. User State
     const { 
         users, 
         activeUser, 
@@ -64,6 +65,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         error: userError 
     } = useUserState();
 
+    // 2. Instance State (CRUD & Selection)
     const {
         instances,
         selectedInstancePath,
@@ -73,45 +75,30 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         selectInstance,
     } = useInstanceServiceState();
 
-    const { getMinecraftVersionList } = useVersionService();
+    // 3. Version State (Minecraft Manifest)
+    const { 
+        minecraftVersions, 
+        latestReleaseId 
+    } = useVersionState();
+
+    // 4. Java State
+    const { 
+        all: javaVersions, 
+        missing: javaIsMissing, 
+        refresh: refreshJava 
+    } = useJavaContext();
+
+    // 5. Installation Services
     // We still keep installMinecraft here if needed for other direct calls, 
     // but addInstallation now uses the hook.
     const { installMinecraft } = useInstallService(); 
-    const [minecraftVersions, setMinecraftVersions] = useState<MinecraftVersion[]>([]);
-    const [latestReleaseId, setLatestReleaseId] = useState<string | null>(null);
-
-    // Import the new creation hook
     const { createVanillaInstance } = useInstanceCreation();
 
-    // Load Minecraft Versions
-    useEffect(() => {
-        let cancelled = false;
+    // 6. UI Specific State (Mock Data / Legacy)
+    const [versions, setVersions] = useState<Version[]>(versionsData);
+    const [selectedVersion, setSelectedVersion] = useState<Version | null>(versionsData[0] || null);
 
-        const loadVersions = async () => {
-            try {
-                const list = await getMinecraftVersionList();
-                if (cancelled) return;
-
-                setMinecraftVersions(list.versions);
-
-                const latestId =
-                    (list.latest && (list.latest.release || list.latest.snapshot)) || null;
-
-                setLatestReleaseId(latestId);
-            } catch (e) {
-                console.error('Failed to load Minecraft versions', e);
-                if (cancelled) return;
-                setMinecraftVersions([]);
-                setLatestReleaseId(null);
-            }
-        };
-
-        loadVersions();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [getMinecraftVersionList]);
+    // --- Computed Data ---
 
     const selectedInstance = useMemo(() => {
         return instances.find(i => i.path === selectedInstancePath) || null;
@@ -142,10 +129,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         [instances, mapInstanceToManagedItem],
     );
     
-    const [versions, setVersions] = useState<Version[]>(versionsData);
-    const [selectedVersion, setSelectedVersion] = useState<Version | null>(versionsData[0] || null);
+    // --- Actions ---
 
-    // REFACTORED: Uses the new hook
     const addInstallation = useCallback(async (item: ManagedItem) => {
         const versionMeta = minecraftVersions.find(v => v.id === item.version);
         try {
@@ -197,8 +182,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const getServerDefaults = () => ({ ...defaultServerData, id: Date.now().toString() });
     
-    const { all: javaVersions, missing: javaIsMissing, refresh: refreshJava } = useJavaContext();
-
     const value: DataContextType = {
         accounts: users,
         activeAccount: activeUser,
