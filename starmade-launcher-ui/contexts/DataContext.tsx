@@ -7,6 +7,7 @@ import { CreateInstanceOption, EditInstanceOptions, Instance, MinecraftVersion }
 import { useVersionService } from '../components/hooks/useVersionService';
 import { useInstallService } from '../components/hooks/useInstallService';
 import { useJavaContext } from '../components/hooks/useJavaContext';
+import { useInstanceCreation } from '../components/hooks/useInstanceCreation';
 
 export interface DataContextType extends OriginalDataContextType {
     loginMicrosoft: () => Promise<any>;
@@ -19,13 +20,12 @@ export interface DataContextType extends OriginalDataContextType {
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-// Step 2 – Normalize instance runtime mapping helpers
+// Helpers to map between UI types and Backend types
 const toRuntimeFromManaged = (item: ManagedItem) => ({
     minecraft: item.version,
     forge: '',
     fabricLoader: '',
     quiltLoader: '',
-    // Other runtime fields (optifine, neoForged, etc.) can be added later as needed
 });
 
 const toCreateOptionsFromItem = (item: ManagedItem): CreateInstanceOption => ({
@@ -67,18 +67,23 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const {
         instances,
         selectedInstancePath,
-        addInstance: createInstance,
+        addInstance: createInstance, // Used for servers
         editInstance,
         deleteInstance,
         selectInstance,
     } = useInstanceServiceState();
 
     const { getMinecraftVersionList } = useVersionService();
-    const { installMinecraft } = useInstallService();
+    // We still keep installMinecraft here if needed for other direct calls, 
+    // but addInstallation now uses the hook.
+    const { installMinecraft } = useInstallService(); 
     const [minecraftVersions, setMinecraftVersions] = useState<MinecraftVersion[]>([]);
     const [latestReleaseId, setLatestReleaseId] = useState<string | null>(null);
 
-    // Step 1 – Solidify live Minecraft version data in DataContext
+    // Import the new creation hook
+    const { createVanillaInstance } = useInstanceCreation();
+
+    // Load Minecraft Versions
     useEffect(() => {
         let cancelled = false;
 
@@ -87,7 +92,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 const list = await getMinecraftVersionList();
                 if (cancelled) return;
 
-                setMinecraftVersions(list.versions); // MinecraftVersion[]
+                setMinecraftVersions(list.versions);
 
                 const latestId =
                     (list.latest && (list.latest.release || list.latest.snapshot)) || null;
@@ -113,10 +118,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }, [instances, selectedInstancePath]);
 
     const mapInstanceToManagedItem = useCallback((i: Instance): ManagedItem => ({
-      id: i.path, // CRITICAL: Use path as id
+      id: i.path,
       name: i.name,
       version: i.runtime.minecraft,
-      type: 'release', // This is a simplification
+      type: 'release',
       icon: i.icon ?? 'release',
       path: i.path,
       lastPlayed: i.lastPlayedDate ? new Date(i.lastPlayedDate).toLocaleString() : 'Never',
@@ -140,38 +145,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [versions, setVersions] = useState<Version[]>(versionsData);
     const [selectedVersion, setSelectedVersion] = useState<Version | null>(versionsData[0] || null);
 
+    // REFACTORED: Uses the new hook
     const addInstallation = useCallback(async (item: ManagedItem) => {
-        const options: CreateInstanceOption = toCreateOptionsFromItem(item);
-
+        const versionMeta = minecraftVersions.find(v => v.id === item.version);
         try {
-            // 1. Create the instance record. The backend will generate the path.
-            const newInstancePath = await createInstance(options);
-            if (!newInstancePath) {
-                throw new Error("Failed to create instance: No path returned.");
-            }
-
-            // 2. Find the version metadata for the selected version.
-            const versionMeta = minecraftVersions.find(v => v.id === item.version);
-            if (!versionMeta) {
-                console.error(`Could not find Minecraft version metadata for ${item.version}`);
-                return;
-            }
-
-            // 3. Trigger the installation of the Minecraft version to the shared versions directory.
-            await installMinecraft(versionMeta);
-
-            // 4. Edit the instance to ensure the version and runtime are set.
-            await editInstance({
-                instancePath: newInstancePath,
-                version: item.version,
-                runtime: toRuntimeFromManaged(item),
-            });
-
+            await createVanillaInstance(item, versionMeta);
         } catch (e) {
-            console.error("Failed during instance creation and installation:", e);
-            // Optionally, show a notification to the user
+            console.error("Failed during instance creation:", e);
         }
-    }, [createInstance, minecraftVersions, installMinecraft, editInstance]);
+    }, [createVanillaInstance, minecraftVersions]);
 
     const updateInstallation = useCallback((item: ManagedItem) => {
         const options: EditInstanceOptions & { instancePath: string } = toEditOptionsFromItem(item);

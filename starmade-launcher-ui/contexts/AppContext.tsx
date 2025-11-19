@@ -32,6 +32,52 @@ type InternalAppContextType = AppContextType & {
 
 const AppContext = createContext<InternalAppContextType | undefined>(undefined);
 
+// Helper to parse backend launch exceptions into friendly UI messages
+const getLaunchErrorMessage = (e: any): { title: string, description: string } => {
+  // Check if it's a structured LaunchException from backend
+  if (e && typeof e === 'object' && 'type' in e) {
+    switch (e.type) {
+      case 'launchInvalidJavaPath':
+        return { 
+          title: 'Invalid Java Path', 
+          description: `The Java path is invalid: ${e.javaPath}. Please check your installation settings.` 
+        };
+      case 'launchJavaNoPermission':
+        return {
+          title: 'Java Permission Denied',
+          description: `The launcher does not have permission to execute Java at: ${e.javaPath}. Check your antivirus or file permissions.`
+        };
+      case 'launchNoProperJava':
+        return { 
+          title: 'No Java Found', 
+          description: `No compatible Java version found for Minecraft ${e.version}. Please install the recommended Java version.` 
+        };
+      case 'launchNoVersionInstalled':
+        return { 
+          title: 'Version Not Installed', 
+          description: `The version ${e.options?.version} is not fully installed. Please try repairing the installation.` 
+        };
+      case 'launchBadVersion':
+        return {
+          title: 'Bad Version',
+          description: `The version ${e.version} is invalid or corrupted.`
+        };
+      case 'launchSpawnProcessFailed':
+        return {
+          title: 'Process Spawn Failed',
+          description: 'Failed to start the game process. This might be due to system restrictions or missing files.'
+        };
+    }
+  }
+  
+  // Fallback for generic errors
+  const msg = e instanceof Error ? e.message : String(e);
+  return { 
+    title: 'Launch Failed', 
+    description: msg || 'An unexpected error occurred while trying to launch the game.' 
+  };
+};
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [activePage, setActivePage] = useState<Page>('Play');
   const [pageProps, setPageProps] = useState<PageProps>({});
@@ -71,7 +117,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Handle game exit (crash / normal exit)
   useEffect(() => {
-    // Support both: (payloadObject) and (exitCode, signal, crashReport, crashReportLocation, errorLog)
     const handleMinecraftExit = (
       rawExit: any,
       rawSignal?: any,
@@ -79,8 +124,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       rawCrashReportLocation?: any,
       rawErrorLog?: any,
     ) => {
-      // XMCL runtime in your environment appears to emit a single payload object
-      // where exit details are in rawExit.exitCode / rawExit.code. Normalize that here.
       const normalized =
         rawExit && typeof rawExit === 'object' && ('code' in rawExit || 'exitCode' in rawExit)
           ? (rawExit.exitCode ?? rawExit)
@@ -121,7 +164,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           crashReportLocation,
         });
 
-        // Structured crash info for the dedicated crash modal
         setGameExitError({
           code,
           crashReport,
@@ -274,11 +316,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setIsLaunching(false);
       setProgress(0);
 
-      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      // Use the new helper to parse the error
+      const { title, description } = getLaunchErrorMessage(e);
+      
       setLaunchError({
-        title: 'Launch Failed',
-        description: 'The game failed to start due to an unexpected error.',
-        extraText: errorMessage,
+        title,
+        description,
+        extraText: JSON.stringify(e, null, 2),
       });
     }
   }, [
