@@ -16,42 +16,14 @@ export interface DataContextType extends OriginalDataContextType {
     userError: string | null;
     selectedInstance: Instance | null;
     selectInstance: (path: string) => void;
+    // Updated signatures
+    addInstallation: (options: CreateInstanceOption) => void;
+    updateInstallation: (options: EditInstanceOptions & { instancePath: string }) => void;
+    addServer: (options: CreateInstanceOption) => void;
+    updateServer: (options: EditInstanceOptions & { instancePath: string }) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
-
-// Helpers to map between UI types and Backend types
-const toRuntimeFromManaged = (item: ManagedItem) => ({
-    minecraft: item.version,
-    forge: '',
-    fabricLoader: '',
-    quiltLoader: '',
-});
-
-const toCreateOptionsFromItem = (item: ManagedItem): CreateInstanceOption => ({
-    name: item.name,
-    runtime: toRuntimeFromManaged(item),
-    version: item.version,
-    icon: item.icon,
-    java: item.java,
-    maxMemory: item.maxMemory,
-    minMemory: item.minMemory,
-    vmOptions: item.vmOptions?.split(' ').filter(v => v),
-    mcOptions: item.mcOptions?.split(' ').filter(v => v),
-});
-
-const toEditOptionsFromItem = (item: ManagedItem): EditInstanceOptions & { instancePath: string } => ({
-    instancePath: item.id, // In this app, id == instance path
-    name: item.name,
-    runtime: toRuntimeFromManaged(item),
-    version: item.version,
-    icon: item.icon,
-    java: item.java,
-    maxMemory: item.maxMemory,
-    minMemory: item.minMemory,
-    vmOptions: item.vmOptions?.split(' ').filter(v => v),
-    mcOptions: item.mcOptions?.split(' ').filter(v => v),
-});
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     // 1. User State
@@ -89,8 +61,6 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } = useJavaContext();
 
     // 5. Installation Services
-    // We still keep installMinecraft here if needed for other direct calls, 
-    // but addInstallation now uses the hook.
     const { installMinecraft } = useInstallService(); 
     const { createVanillaInstance } = useInstanceCreation();
 
@@ -131,41 +101,26 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     
     // --- Actions ---
 
-    const addInstallation = useCallback(async (item: ManagedItem) => {
-        const versionMeta = minecraftVersions.find(v => v.id === item.version);
+    const addInstallation = useCallback(async (options: CreateInstanceOption) => {
+        const versionMeta = minecraftVersions.find(v => v.id === options.version);
         try {
-            await createVanillaInstance(item, versionMeta);
+            await createVanillaInstance(options, versionMeta);
         } catch (e) {
             console.error("Failed during instance creation:", e);
         }
     }, [createVanillaInstance, minecraftVersions]);
 
-    const updateInstallation = useCallback((item: ManagedItem) => {
-        const options: EditInstanceOptions & { instancePath: string } = toEditOptionsFromItem(item);
+    const updateInstallation = useCallback((options: EditInstanceOptions & { instancePath: string }) => {
         editInstance(options);
     }, [editInstance]);
 
     const deleteInstallation = useCallback((id: string) => deleteInstance(id), [deleteInstance]);
     
-    const addServer = useCallback((item: ManagedItem) => {
-        const baseOptions = toCreateOptionsFromItem(item);
-        const options: CreateInstanceOption = {
-            ...baseOptions,
-            server: {
-                host: item.port || '127.0.0.1',
-            },
-        };
+    const addServer = useCallback((options: CreateInstanceOption) => {
         createInstance(options);
     }, [createInstance]);
 
-    const updateServer = useCallback((item: ManagedItem) => {
-        const baseOptions: EditInstanceOptions & { instancePath: string } = toEditOptionsFromItem(item);
-        const options: EditInstanceOptions & { instancePath: string } = {
-            ...baseOptions,
-            server: {
-                host: item.port || '127.0.0.1',
-            },
-        };
+    const updateServer = useCallback((options: EditInstanceOptions & { instancePath: string }) => {
         editInstance(options);
     }, [editInstance]);
 

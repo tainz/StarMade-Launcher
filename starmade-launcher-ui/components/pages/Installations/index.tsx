@@ -5,6 +5,7 @@ import ItemCard from '../../common/ItemCard';
 import type { ManagedItem, InstallationsTab } from '../../../types';
 import PageContainer from '../../common/PageContainer';
 import { useData } from '../../../contexts/DataContext';
+import { CreateInstanceOption, EditInstanceOptions } from '@xmcl/runtime-api';
 
 interface InstallationsProps {
   initialTab?: InstallationsTab;
@@ -20,7 +21,7 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
     const { 
         installations, 
         servers,
-        selectedInstance, // Added this line
+        selectedInstance,
         addInstallation,
         updateInstallation,
         deleteInstallation,
@@ -45,14 +46,14 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
         itemTypeName: 'Installation', 
         cardActionButtonText: 'Play', 
         cardStatusLabel: 'Last played',
-        deleteFunc: deleteInstallation, // Added this line
+        deleteFunc: deleteInstallation,
       }
     : { 
         items: servers, 
         itemTypeName: 'Server', 
         cardActionButtonText: 'Start', 
         cardStatusLabel: 'Status',
-        deleteFunc: deleteServer, // Added this line
+        deleteFunc: deleteServer,
       };
     
     const handleEdit = (item: ManagedItem) => {
@@ -68,11 +69,19 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
         setView('form');
     };
 
-    const handleSave = (savedData: ManagedItem) => {
+    const handleSave = (savedData: CreateInstanceOption | (EditInstanceOptions & { instancePath: string })) => {
         if (activeTab === 'installations') {
-            isNew ? addInstallation(savedData) : updateInstallation(savedData);
+            if (isNew) {
+                addInstallation(savedData as CreateInstanceOption);
+            } else {
+                updateInstallation(savedData as EditInstanceOptions & { instancePath: string });
+            }
         } else {
-            isNew ? addServer(savedData) : updateServer(savedData);
+            if (isNew) {
+                addServer(savedData as CreateInstanceOption);
+            } else {
+                updateServer(savedData as EditInstanceOptions & { instancePath: string });
+            }
         }
         setView('list');
         setActiveItem(null);

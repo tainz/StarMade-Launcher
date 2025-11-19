@@ -11,11 +11,13 @@ import { getIconComponent } from '../../utils/getIconComponent';
 import CustomDropdown from './CustomDropdown';
 import MemorySlider from './MemorySlider';
 import { useData } from '../../contexts/DataContext';
+import { CreateInstanceOption, EditInstanceOptions } from '@xmcl/runtime-api';
 
 interface InstallationFormProps {
   item: ManagedItem;
   isNew: boolean;
-  onSave: (data: ManagedItem) => void;
+  // Updated signature to accept backend types
+  onSave: (data: CreateInstanceOption | (EditInstanceOptions & { instancePath: string })) => void;
   onCancel: () => void;
   itemTypeName: string;
 }
@@ -204,10 +206,7 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   }, [jvmArgs]);
 
   const handleSaveClick = () => {
-    // Derive the effective java value from the selection:
-    // - '' => Auto (undefined, let launcher choose)
-    // - CUSTOM_JAVA_VALUE => customJavaPath (if non-empty)
-    // - otherwise => selected discovered Java path
+    // Derive the effective java value from the selection
     const effectiveJava =
       javaSelection === ''
         ? undefined
@@ -215,18 +214,52 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
         ? customJavaPath || undefined
         : javaSelection;
 
-    onSave({
-      ...item,
+    // Construct the runtime object
+    const runtime = {
+      minecraft: version,
+      forge: '',
+      fabricLoader: '',
+      quiltLoader: '',
+      // Add other loaders here if supported in the future
+    };
+
+    // Common options
+    const baseOptions = {
       name,
-      type,
-      icon,
       version,
-      path: gameDir,
-      ...(itemTypeName === 'Server' && { port }),
+      icon,
       java: effectiveJava,
       maxMemory: javaMemory,
-      vmOptions: jvmArgs,
-    });
+      vmOptions: jvmArgs.split(' ').filter(v => v.length > 0),
+      mcOptions: [], // Add mcOptions state if needed
+      runtime,
+    };
+
+    if (isNew) {
+      // Create Options
+      const createOptions: CreateInstanceOption = {
+        ...baseOptions,
+        path: gameDir, // Optional hint for path
+        ...(itemTypeName === 'Server' && {
+          server: {
+            host: port || '127.0.0.1',
+          }
+        })
+      };
+      onSave(createOptions);
+    } else {
+      // Edit Options
+      const editOptions: EditInstanceOptions & { instancePath: string } = {
+        ...baseOptions,
+        instancePath: item.id, // In this app, id is the path
+        ...(itemTypeName === 'Server' && {
+          server: {
+            host: port || '127.0.0.1',
+          }
+        })
+      };
+      onSave(editOptions);
+    }
   };
 
   const title = isNew ? `New ${itemTypeName}` : `Edit ${itemTypeName}`;
