@@ -4,6 +4,7 @@ import { useData } from '../../contexts/DataContext';
 import { useInstanceJavaDiagnose } from './useInstanceJavaDiagnose';
 import { useUserDiagnose } from './useUserDiagnose';
 import { useInstanceJava } from './useInstanceJava';
+import { useInstanceVersionInstall } from './useInstanceVersionInstall';
 
 export interface LaunchButtonState {
   text: string;
@@ -15,16 +16,11 @@ export interface LaunchButtonState {
   onClick: () => void;
 }
 
-/**
- * Determines the state, appearance, and action of the main launch button.
- * Mirrors logic from xmcl-keystone-ui/src/composables/launchButton.ts
- */
 export function useLaunchButton(): LaunchButtonState {
   const { 
     isLaunching, 
     startLaunching, 
     progress, 
-    needsInstall, // Exposed from AppContext
     openLaunchModal 
   } = useApp();
   
@@ -37,16 +33,23 @@ export function useLaunchButton(): LaunchButtonState {
   // 2. User Diagnosis
   const { issue: userIssue, fix: fixUser } = useUserDiagnose();
 
+  // 3. Version/Asset Diagnosis (The missing link)
+  const { instruction, fix: fixVersion, loading: fixingVersion } = useInstanceVersionInstall(
+    selectedInstance?.path || '',
+    selectedInstance ? [selectedInstance] : [],
+    javaVersions
+  );
+
   return useMemo(() => {
-    // Priority 1: Launching State (Highest Priority)
-    if (isLaunching) {
+    // Priority 1: Launching/Installing State
+    if (isLaunching || fixingVersion) {
       return {
-        text: `Launching... ${Math.round(progress)}%`,
+        text: fixingVersion ? 'Installing...' : `Launching... ${Math.round(progress)}%`,
         color: 'green',
         disabled: true,
         loading: true,
         progress: progress,
-        onClick: () => {}, // No-op while launching
+        onClick: () => {},
       };
     }
 
@@ -58,11 +61,26 @@ export function useLaunchButton(): LaunchButtonState {
         icon: 'user',
         disabled: false,
         loading: false,
-        onClick: fixUser, // Triggers login flow
+        onClick: fixUser,
       };
     }
 
-    // Priority 3: Java Issues
+    // Priority 3: Missing Assets/Version (Needs Install)
+    if (instruction) {
+      return {
+        text: 'Install & Play',
+        color: 'blue',
+        icon: 'download',
+        disabled: false,
+        loading: false,
+        onClick: async () => {
+            await fixVersion();
+            startLaunching();
+        },
+      };
+    }
+
+    // Priority 4: Java Issues
     if (javaIssue) {
       return {
         text: 'Fix Java',
@@ -70,28 +88,16 @@ export function useLaunchButton(): LaunchButtonState {
         icon: 'wrench',
         disabled: false,
         loading: false,
-        onClick: openLaunchModal, // Open modal to show specific Java error
+        onClick: openLaunchModal,
       };
     }
 
-    // Priority 4: Missing Assets/Version (Needs Install)
-    if (needsInstall) {
-      return {
-        text: 'Install & Play',
-        color: 'blue',
-        icon: 'download',
-        disabled: false,
-        loading: false,
-        onClick: startLaunching, // startLaunching handles installation internally
-      };
-    }
-
-    // Priority 5: Ready to Launch (Default)
+    // Priority 5: Ready to Launch
     return {
       text: 'Launch',
       color: 'green',
       icon: 'play',
-      disabled: !selectedInstance, // Disable if no instance selected
+      disabled: !selectedInstance,
       loading: false,
       onClick: startLaunching,
     };
@@ -100,10 +106,12 @@ export function useLaunchButton(): LaunchButtonState {
     progress, 
     userIssue, 
     javaIssue, 
-    needsInstall, 
+    instruction, 
+    fixingVersion,
     selectedInstance, 
     startLaunching, 
     fixUser, 
-    openLaunchModal
+    openLaunchModal,
+    fixVersion
   ]);
 }

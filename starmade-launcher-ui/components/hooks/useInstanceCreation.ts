@@ -9,34 +9,69 @@ import {
 import { InstanceFile } from '@xmcl/instance';
 import { useService } from './useService';
 
+export interface CreationFormState {
+  name: string;
+  version: string;
+  javaPath: string;
+  memory: number;
+  vmOptions: string;
+  mcOptions: string;
+}
+
 export function useInstanceCreation() {
   const instanceService = useService(InstanceServiceKey);
   const installService = useService(InstallServiceKey);
   const instanceInstallService = useService(InstanceInstallServiceKey);
   
-  const [isCreating, setIsCreating] = useState(false);
+  // --- State Management (Vue Parity) ---
+  const [formState, setFormState] = useState<CreationFormState>({
+    name: '',
+    version: '',
+    javaPath: '',
+    memory: 4096,
+    vmOptions: '',
+    mcOptions: '',
+  });
 
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+
+  // Helper to update form fields
+  const updateField = useCallback(<K extends keyof CreationFormState>(key: K, value: CreationFormState[K]) => {
+    setFormState(prev => ({ ...prev, [key]: value }));
+  }, []);
+
+  const resetForm = useCallback(() => {
+    setFormState({
+      name: '',
+      version: '',
+      javaPath: '',
+      memory: 4096,
+      vmOptions: '',
+      mcOptions: '',
+    });
+    setError(null);
+  }, []);
+
+  // --- Core Logic ---
+
+  /**
+   * Stateless creation (Legacy support for DataContext)
+   */
   const createVanillaInstance = useCallback(async (
     options: CreateInstanceOption, 
     versionMeta: MinecraftVersion | undefined,
     files: InstanceFile[] = []
   ) => {
     setIsCreating(true);
+    setError(null);
     try {
-      // 1. Create Instance (Backend generates path and returns it)
       const newPath = await instanceService.createInstance(options);
 
-      // 2. Trigger Version Install (Metadata only)
-      // This ensures the version JSON is present immediately. 
-      // The actual assets/jars are diagnosed and installed by the Launch process 
-      // (useInstanceVersionInstall) later, but the JSON is needed for diagnosis.
       if (versionMeta) {
         await installService.installMinecraft(versionMeta);
       }
 
-      // 3. Install Instance Files (Mirroring Vue logic)
-      // If there are specific files (like resource packs, configs, or modpack overrides)
-      // passed during creation, install them now.
       if (files.length > 0) {
         await instanceInstallService.installInstanceFiles({
           path: newPath,
@@ -46,13 +81,50 @@ export function useInstanceCreation() {
       }
 
       return newPath;
-    } catch (error) {
-      console.error("Failed to create instance", error);
-      throw error;
+    } catch (e) {
+      console.error("Failed to create instance", e);
+      setError(e);
+      throw e;
     } finally {
       setIsCreating(false);
     }
   }, [instanceService, installService, instanceInstallService]);
 
-  return { createVanillaInstance, isCreating };
+  /**
+   * Stateful creation (New Pattern for Forms)
+   * Uses the internal formState
+   */
+  const create = useCallback(async (
+    versionMeta: MinecraftVersion | undefined,
+    files: InstanceFile[] = []
+  ) => {
+    const options: CreateInstanceOption = {
+      name: formState.name,
+      version: formState.version,
+      java: formState.javaPath || undefined,
+      maxMemory: formState.memory,
+      vmOptions: formState.vmOptions.split(' ').filter(x => x.length > 0),
+      mcOptions: formState.mcOptions.split(' ').filter(x => x.length > 0),
+      runtime: {
+          minecraft: formState.version,
+          forge: '',
+          fabricLoader: '',
+          quiltLoader: '',
+      }
+    };
+    return createVanillaInstance(options, versionMeta, files);
+  }, [formState, createVanillaInstance]);
+
+  return { 
+    // State
+    formState, 
+    isCreating, 
+    error,
+    
+    // Actions
+    updateField, 
+    resetForm,
+    create,              // Use this in InstallationForm
+    createVanillaInstance // Use this in DataContext (Legacy)
+  };
 }
