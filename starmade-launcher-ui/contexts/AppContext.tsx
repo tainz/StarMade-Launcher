@@ -16,6 +16,7 @@ import { useInstanceVersionInstall } from '../components/hooks/useInstanceVersio
 import { useInstanceJava } from '../components/hooks/useInstanceJava';
 import { useInstanceJavaDiagnose } from '../components/hooks/useInstanceJavaDiagnose';
 import { useUserDiagnose } from '../components/hooks/useUserDiagnose';
+import { getLaunchErrorMessage } from '../utils/errorMapping'; // Refactor 3 Import
 
 // Structured launch error type for pre‑launch failures
 type LaunchError = {
@@ -29,55 +30,10 @@ type InternalAppContextType = AppContextType & {
   launchError: LaunchError | null;
   clearLaunchError: () => void;
   fixingVersion?: boolean;
+  needsInstall: boolean; // New: Expose if installation is required
 };
 
 const AppContext = createContext<InternalAppContextType | undefined>(undefined);
-
-// Helper to parse backend launch exceptions into friendly UI messages
-const getLaunchErrorMessage = (e: any): { title: string, description: string } => {
-  // Check if it's a structured LaunchException from backend
-  if (e && typeof e === 'object' && 'type' in e) {
-    switch (e.type) {
-      case 'launchInvalidJavaPath':
-        return { 
-          title: 'Invalid Java Path', 
-          description: `The Java path is invalid: ${e.javaPath}. Please check your installation settings.` 
-        };
-      case 'launchJavaNoPermission':
-        return {
-          title: 'Java Permission Denied',
-          description: `The launcher does not have permission to execute Java at: ${e.javaPath}. Check your antivirus or file permissions.`
-        };
-      case 'launchNoProperJava':
-        return { 
-          title: 'No Java Found', 
-          description: `No compatible Java version found for Minecraft ${e.version}. Please install the recommended Java version.` 
-        };
-      case 'launchNoVersionInstalled':
-        return { 
-          title: 'Version Not Installed', 
-          description: `The version ${e.options?.version} is not fully installed. Please try repairing the installation.` 
-        };
-      case 'launchBadVersion':
-        return {
-          title: 'Bad Version',
-          description: `The version ${e.version} is invalid or corrupted.`
-        };
-      case 'launchSpawnProcessFailed':
-        return {
-          title: 'Process Spawn Failed',
-          description: 'Failed to start the game process. This might be due to system restrictions or missing files.'
-        };
-    }
-  }
-  
-  // Fallback for generic errors
-  const msg = e instanceof Error ? e.message : String(e);
-  return { 
-    title: 'Launch Failed', 
-    description: msg || 'An unexpected error occurred while trying to launch the game.' 
-  };
-};
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [activePage, setActivePage] = useState<Page>('Play');
@@ -254,17 +210,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     // 2. User Diagnosis (Auth Validation)
-    // This replaces the simple !data.activeAccount check with a robust check for missing/expired sessions
     if (userIssue) {
       console.log('User issue detected:', userIssue);
       setIsLaunchModalOpen(false);
-
       try {
-        // Attempt to fix (usually triggers login popup)
         await fixUser();
-        // Even if fix succeeds (login happens), we stop the launch flow here.
-        // The user context will update, and the user can click "Launch" again.
-        // This prevents race conditions or launching with stale state.
         return;
       } catch (e) {
         console.error('Failed to fix user issue:', e);
@@ -276,7 +226,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
-    // 3. Java Pre‑flight: block or warn if Java is invalid/incompatible.
+    // 3. Java Pre‑flight
     if (javaIssue) {
       setIsLaunchModalOpen(false);
       setLaunchError({
@@ -318,7 +268,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         );
         await fix();
 
-        // Re-read version after fix (in case it was updated later for loaders, etc.).
+        // Re-read version after fix
         versionToLaunch =
           data.selectedInstance.version || data.selectedInstance.runtime?.minecraft;
       }
@@ -327,7 +277,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const options: LaunchOptions = {
         version: versionToLaunch,
         gameDirectory: data.selectedInstance.path,
-        user: data.activeAccount!, // We know this is safe because userIssue check passed
+        user: data.activeAccount!,
         java: data.selectedInstance.java,
         maxMemory: data.selectedInstance.maxMemory,
         minMemory: data.selectedInstance.minMemory,
@@ -337,13 +287,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       await launchService.launch(options);
       console.log('Launch command sent successfully');
-      // Task updates will drive progress/isLaunching from here.
     } catch (e) {
       console.error('Failed to launch game', e);
       setIsLaunching(false);
       setProgress(0);
 
-      // Use the new helper to parse the error
+      // Refactor 3: Use centralized error mapping
       const { title, description } = getLaunchErrorMessage(e);
       
       setLaunchError({
@@ -396,6 +345,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     launchError,
     clearLaunchError,
     fixingVersion,
+    needsInstall: !!instruction, // Expose this for the button logic
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

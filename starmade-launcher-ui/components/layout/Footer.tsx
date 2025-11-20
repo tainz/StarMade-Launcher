@@ -4,6 +4,7 @@ import useOnClickOutside from '../hooks/useOnClickOutside';
 import type { Version } from '../../types';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
+import { useLaunchButton } from '../hooks/useLaunchButton'; // Refactor 2 Import
 
 const DiscordButton: React.FC = () => {
     const [onlineCount, setOnlineCount] = useState<number | null>(null);
@@ -114,25 +115,39 @@ const VersionSelector: React.FC = () => {
 };
 
 interface SciFiPlayButtonProps {
-    isUpdating: boolean;
-    progress: number;
+    text: string;
+    color: string;
+    loading: boolean;
+    progress?: number;
     onClick: () => void;
-    onUpdateComplete: () => void;
+    disabled: boolean;
 }
 
-const SciFiPlayButton: React.FC<SciFiPlayButtonProps> = ({ isUpdating, progress, onClick, onUpdateComplete }) => {
+const SciFiPlayButton: React.FC<SciFiPlayButtonProps> = ({ 
+    text, 
+    color, 
+    loading, 
+    progress = 0, 
+    onClick, 
+    disabled 
+}) => {
     const buttonClipPathId = "scifi-button-clip-path";
+
+    // Map color prop to Tailwind classes (simplified for this example)
+    const accentColor = color === 'orange' ? 'bg-orange-500' : 
+                        color === 'blue' ? 'bg-blue-500' : 
+                        'bg-starmade-accent';
 
     return (
         <button
             onClick={onClick}
-            disabled={isUpdating}
+            disabled={disabled}
             className="
                 group relative font-display text-xl font-bold uppercase tracking-wider text-white
                 h-[60px] w-[260px]
                 transition-all duration-300 ease-in-out
                 transform active:scale-95
-                disabled:cursor-not-allowed
+                disabled:cursor-not-allowed disabled:opacity-70
             "
         >
             <svg width="0" height="0" className="absolute">
@@ -154,22 +169,20 @@ const SciFiPlayButton: React.FC<SciFiPlayButtonProps> = ({ isUpdating, progress,
             ></div>
 
             <div
-                className="
-                    absolute top-0 left-0 h-full bg-starmade-accent
-                    shadow-[0_0_8px_0px_#227b86,0_0_15px_0px_#227b8655]
-                "
+                className={`
+                    absolute top-0 left-0 h-full ${accentColor}
+                    shadow-[0_0_8px_0px_rgba(34,123,134,0.5)]
+                `}
                 style={{
                     clipPath: `url(#${buttonClipPathId})`,
                     width: `${progress}%`,
-                    opacity: isUpdating ? 1 : 0,
+                    opacity: loading ? 1 : 0,
                     transition: progress > 1 ? 'width 0.05s linear' : 'opacity 0.5s ease-out',
                 }}
             ></div>
 
-            <div className="relative z-10 flex items-center justify-center h-full w-full">
-                <span className="text-2xl">
-                    {isUpdating ? `Updating... ${Math.floor(progress)}%` : 'Launch'}
-                </span>
+            <div className="relative z-10 flex items-center justify-center h-full w-full gap-2">
+                <span>{text}</span>
             </div>
         </button>
     );
@@ -177,7 +190,17 @@ const SciFiPlayButton: React.FC<SciFiPlayButtonProps> = ({ isUpdating, progress,
 
 
 const Footer: React.FC = () => {
-  const { navigate, isLaunching, openLaunchModal, completeLaunching, progress } = useApp();
+  const { navigate, completeLaunching } = useApp();
+  
+  // Use the new hook to get button state
+  const { text, color, loading, progress, onClick, disabled } = useLaunchButton();
+
+  // Handle completion cleanup if needed (though hook handles state)
+  useEffect(() => {
+    if (!loading && progress === 100) {
+        completeLaunching();
+    }
+  }, [loading, progress, completeLaunching]);
 
   return (
     <footer className="relative z-20 px-6 py-4 bg-black/20 backdrop-blur-sm border-t border-white/5">
@@ -190,10 +213,12 @@ const Footer: React.FC = () => {
             <VersionSelector />
 
             <SciFiPlayButton 
-                isUpdating={isLaunching}
+                text={text}
+                color={color}
+                loading={loading}
                 progress={progress}
-                onClick={openLaunchModal}
-                onUpdateComplete={completeLaunching}
+                onClick={onClick}
+                disabled={disabled}
             />
 
             <button 
