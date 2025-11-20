@@ -6,25 +6,27 @@ import {
   FolderIcon,
 } from './icons';
 import { useApp } from '../../contexts/AppContext';
+import { useService } from '../hooks/useService';
+import { BaseServiceKey } from '@xmcl/runtime-api';
 
-/**
- * Shows a crash/exit dialog when Minecraft exits with a non‑zero code.
- * Uses gameExitError from AppContext, similar in spirit to AppGameExitDialog in Vue.
- */
 const GameExitModal: React.FC = () => {
   const { gameExitError, clearGameExitError } = useApp();
+  const { showItemInDirectory } = useService(BaseServiceKey);
 
   if (!gameExitError) return null;
 
   const { code, crashReportLocation, crashReport, errorLog } = gameExitError;
 
-  const title =
-    code !== 0 ? 'Game Crashed' : 'Game Exited With Error';
-
-  const subtitle =
-    code !== 0
+  const title = code !== 0 ? 'Game Crashed' : 'Game Exited With Error';
+  const subtitle = code !== 0
       ? `Minecraft exited with code ${code}.`
       : 'Minecraft exited unexpectedly.';
+
+  const handleOpenFolder = () => {
+    if (crashReportLocation) {
+      showItemInDirectory(crashReportLocation);
+    }
+  };
 
   return (
     <div
@@ -75,18 +77,6 @@ const GameExitModal: React.FC = () => {
               </span>
             </div>
           )}
-
-          {crashReport && (
-            <div className="flex items-center gap-2 text-sm text-gray-300">
-              <FolderIcon className="w-4 h-4 text-gray-300" />
-              <span className="truncate">
-                Crash report file:{' '}
-                <span className="font-mono text-xs break-all">
-                  {crashReport}
-                </span>
-              </span>
-            </div>
-          )}
         </div>
 
         {/* Error log */}
@@ -105,6 +95,15 @@ const GameExitModal: React.FC = () => {
 
         {/* Footer */}
         <div className="mt-4 flex justify-end gap-3">
+          {crashReportLocation && (
+             <button
+                onClick={handleOpenFolder}
+                className="px-4 py-2 rounded-md hover:bg-white/10 text-sm font-semibold uppercase tracking-wider text-gray-300 border border-white/10 transition-colors flex items-center gap-2"
+             >
+                <FolderIcon className="w-4 h-4" />
+                Open Crash Report
+             </button>
+          )}
           <button
             onClick={clearGameExitError}
             className="px-4 py-2 rounded-md bg-slate-700 hover:bg-slate-600 text-sm font-semibold uppercase tracking-wider text-gray-100 border border-slate-500 transition-colors"
