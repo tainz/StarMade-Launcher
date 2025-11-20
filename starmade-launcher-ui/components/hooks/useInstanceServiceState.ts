@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     InstanceServiceKey,
     Instance,
@@ -7,6 +7,7 @@ import {
     CreateInstanceOption,
 } from '@xmcl/runtime-api';
 import { useService, useServiceMutation } from './useService';
+import { ManagedItem } from '../../types';
 
 export function useInstanceServiceState() {
     const instanceService = useService(InstanceServiceKey);
@@ -23,6 +24,8 @@ export function useInstanceServiceState() {
             setState(initialState);
             const allInstances = Object.values(initialState.all);
             setInstances(allInstances);
+            
+            // Ensure a selection exists
             if (!selectedInstancePath || !allInstances.some(i => i.path === selectedInstancePath)) {
                 const newPath = allInstances[0]?.path || '';
                 setSelectedInstancePath(newPath);
@@ -44,7 +47,40 @@ export function useInstanceServiceState() {
         setInstances(current => current.map(i => i.path === payload.path ? { ...i, ...payload } : i));
     });
 
-    // Actions
+    // --- View Model Logic (Moved from DataContext) ---
+
+    const selectedInstance = useMemo(() => {
+        return instances.find(i => i.path === selectedInstancePath) || null;
+    }, [instances, selectedInstancePath]);
+
+    const mapInstanceToManagedItem = useCallback((i: Instance): ManagedItem => ({
+      id: i.path,
+      name: i.name,
+      version: i.runtime.minecraft,
+      type: 'release',
+      icon: i.icon ?? 'release',
+      path: i.path,
+      lastPlayed: i.lastPlayedDate ? new Date(i.lastPlayedDate).toLocaleString() : 'Never',
+      java: i.java,
+      minMemory: i.minMemory,
+      maxMemory: i.maxMemory,
+      vmOptions: i.vmOptions?.join(' '),
+      mcOptions: i.mcOptions?.join(' '),
+      port: i.server?.host,
+    }), []);
+
+    const installations = useMemo(
+        () => instances.filter(i => !i.server).map(mapInstanceToManagedItem),
+        [instances, mapInstanceToManagedItem],
+    );
+
+    const servers = useMemo(
+        () => instances.filter(i => !!i.server).map(mapInstanceToManagedItem),
+        [instances, mapInstanceToManagedItem],
+    );
+
+    // --- Actions ---
+
     const addInstance = useCallback(async (options: CreateInstanceOption) => {
         return await instanceService.createInstance(options);
     }, [instanceService]);
@@ -64,8 +100,16 @@ export function useInstanceServiceState() {
     }, [instanceService]);
 
     return {
+        // Raw Data
         instances,
         selectedInstancePath,
+        selectedInstance,
+        
+        // View Models
+        installations,
+        servers,
+
+        // Actions
         addInstance,
         editInstance,
         deleteInstance,

@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { MinecraftVersion } from '@xmcl/runtime-api';
 import { useVersionService } from './useVersionService';
+import { Version } from '../../types';
+import { versionsData } from '../../data/mockData'; // Fallback/Mock data
 
 export function useVersionState() {
     const { getMinecraftVersionList } = useVersionService();
@@ -10,6 +12,11 @@ export function useVersionState() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<unknown>(null);
 
+    // UI Specific State (formerly in DataContext)
+    // We keep the mock 'versions' for the UI dropdowns that aren't fully connected to backend yet
+    const [versions, setVersions] = useState<Version[]>(versionsData);
+    const [selectedVersion, setSelectedVersion] = useState<Version | null>(versionsData[0] || null);
+
     const refreshVersions = useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -18,9 +25,7 @@ export function useVersionState() {
             
             setMinecraftVersions(list.versions);
 
-            const latestId =
-                (list.latest && (list.latest.release || list.latest.snapshot)) || null;
-
+            const latestId = (list.latest && (list.latest.release || list.latest.snapshot)) || null;
             setLatestReleaseId(latestId);
         } catch (e) {
             console.error('Failed to load Minecraft versions', e);
@@ -42,6 +47,10 @@ export function useVersionState() {
         latestReleaseId,
         loading,
         error,
-        refreshVersions
+        refreshVersions,
+        // UI specific exports
+        versions,
+        selectedVersion,
+        setSelectedVersion
     };
 }

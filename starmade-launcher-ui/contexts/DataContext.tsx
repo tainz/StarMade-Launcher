@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useState, ReactNode, useMemo, useCallback } from 'react';
-import type { DataContextType as OriginalDataContextType, ManagedItem, Version } from '../types';
+// starmade-launcher-ui/contexts/DataContext.tsx
+import React, { createContext, useContext, ReactNode, useCallback } from 'react';
+import type { DataContextType as OriginalDataContextType, ManagedItem } from '../types';
 import { useUserState } from '../components/hooks/useUserState';
 import { useInstanceServiceState } from '../components/hooks/useInstanceServiceState';
-import { versionsData, defaultInstallationData, defaultServerData } from '../data/mockData';
+import { defaultInstallationData, defaultServerData } from '../data/mockData';
 import { CreateInstanceOption, EditInstanceOptions, Instance, MinecraftVersion } from '@xmcl/runtime-api';
 import { useInstallService } from '../components/hooks/useInstallService';
 import { useJavaContext } from '../components/hooks/useJavaContext';
@@ -37,20 +38,25 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         error: userError 
     } = useUserState();
 
-    // 2. Instance State (CRUD & Selection)
+    // 2. Instance State (Now handles View Model mapping internally)
     const {
-        instances,
-        selectedInstancePath,
-        addInstance: createInstance, // Used for servers
+        instances, // Raw instances if needed
+        selectedInstance,
+        installations, // Mapped ManagedItems
+        servers,       // Mapped ManagedItems
+        addInstance: createInstanceRaw,
         editInstance,
         deleteInstance,
         selectInstance,
     } = useInstanceServiceState();
 
-    // 3. Version State (Minecraft Manifest)
+    // 3. Version State
     const { 
         minecraftVersions, 
-        latestReleaseId 
+        latestReleaseId,
+        versions,
+        selectedVersion,
+        setSelectedVersion
     } = useVersionState();
 
     // 4. Java State
@@ -61,49 +67,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } = useJavaContext();
 
     // 5. Installation Services
-    const { installMinecraft } = useInstallService(); 
     const { createVanillaInstance } = useInstanceCreation();
 
-    // 6. UI Specific State (Mock Data / Legacy)
-    const [versions, setVersions] = useState<Version[]>(versionsData);
-    const [selectedVersion, setSelectedVersion] = useState<Version | null>(versionsData[0] || null);
-
-    // --- Computed Data ---
-
-    const selectedInstance = useMemo(() => {
-        return instances.find(i => i.path === selectedInstancePath) || null;
-    }, [instances, selectedInstancePath]);
-
-    const mapInstanceToManagedItem = useCallback((i: Instance): ManagedItem => ({
-      id: i.path,
-      name: i.name,
-      version: i.runtime.minecraft,
-      type: 'release',
-      icon: i.icon ?? 'release',
-      path: i.path,
-      lastPlayed: i.lastPlayedDate ? new Date(i.lastPlayedDate).toLocaleString() : 'Never',
-      java: i.java,
-      minMemory: i.minMemory,
-      maxMemory: i.maxMemory,
-      vmOptions: i.vmOptions?.join(' '),
-      mcOptions: i.mcOptions?.join(' '),
-      port: i.server?.host,
-    }), []);
-
-    const installations = useMemo(
-        () => instances.filter(i => !i.server).map(mapInstanceToManagedItem),
-        [instances, mapInstanceToManagedItem],
-    );
-    const servers = useMemo(
-        () => instances.filter(i => !!i.server).map(mapInstanceToManagedItem),
-        [instances, mapInstanceToManagedItem],
-    );
-    
-    // --- Actions ---
+    // --- Orchestration Actions ---
+    // These combine data from multiple hooks (e.g. creating instance + using version meta)
 
     const addInstallation = useCallback(async (options: CreateInstanceOption) => {
         const versionMeta = minecraftVersions.find(v => v.id === options.version);
         try {
+            // Uses the specialized hook that handles version JSON installation
             await createVanillaInstance(options, versionMeta);
         } catch (e) {
             console.error("Failed during instance creation:", e);
@@ -117,8 +89,10 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const deleteInstallation = useCallback((id: string) => deleteInstance(id), [deleteInstance]);
     
     const addServer = useCallback((options: CreateInstanceOption) => {
-        createInstance(options);
-    }, [createInstance]);
+        // Servers don't need the complex version JSON install logic usually, 
+        // but we use the raw create for simplicity here
+        createInstanceRaw(options);
+    }, [createInstanceRaw]);
 
     const updateServer = useCallback((options: EditInstanceOptions & { instancePath: string }) => {
         editInstance(options);
