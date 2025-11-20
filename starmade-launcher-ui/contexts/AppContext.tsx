@@ -15,6 +15,7 @@ import { useTaskManager } from '../components/hooks/useTaskManager';
 import { useInstanceVersionInstall } from '../components/hooks/useInstanceVersionInstall';
 import { useInstanceJava } from '../components/hooks/useInstanceJava';
 import { useInstanceJavaDiagnose } from '../components/hooks/useInstanceJavaDiagnose';
+import { useUserDiagnose } from '../components/hooks/useUserDiagnose';
 
 // Structured launch error type for pre‑launch failures
 type LaunchError = {
@@ -102,6 +103,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const javaVersions = data.javaVersions ?? [];
   const { status: javaStatus } = useInstanceJava(data.selectedInstance, javaVersions);
   const { issue: javaIssue } = useInstanceJavaDiagnose(javaStatus);
+
+  // User Authentication Diagnosis
+  const { issue: userIssue, fix: fixUser } = useUserDiagnose();
 
   // Diagnose/fix missing version components for the selected instance
   const selectedInstanceArray = useMemo(
@@ -238,18 +242,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const closeLaunchModal = () => setIsLaunchModalOpen(false);
 
   const startLaunching = useCallback(async () => {
-    if (!data.selectedInstance || !data.activeAccount) {
-      console.error('Cannot launch without a selected instance and active account.');
+    // 1. Basic Instance Check
+    if (!data.selectedInstance) {
+      console.error('Cannot launch without a selected instance.');
       setIsLaunchModalOpen(false);
       setLaunchError({
-        title: 'Cannot Launch',
-        description:
-          'Please select an installation and log in with a Minecraft account before launching.',
+        title: 'No Instance Selected',
+        description: 'Please select an installation before launching.',
       });
       return;
     }
 
-    // 0. Java pre‑flight: block or warn if Java is invalid/incompatible.
+    // 2. User Diagnosis (Auth Validation)
+    // This replaces the simple !data.activeAccount check with a robust check for missing/expired sessions
+    if (userIssue) {
+      console.log('User issue detected:', userIssue);
+      setIsLaunchModalOpen(false);
+
+      try {
+        // Attempt to fix (usually triggers login popup)
+        await fixUser();
+        // Even if fix succeeds (login happens), we stop the launch flow here.
+        // The user context will update, and the user can click "Launch" again.
+        // This prevents race conditions or launching with stale state.
+        return;
+      } catch (e) {
+        console.error('Failed to fix user issue:', e);
+        setLaunchError({
+          title: 'Login Failed',
+          description: 'Could not refresh session or log in. Please try again manually.',
+        });
+        return;
+      }
+    }
+
+    // 3. Java Pre‑flight: block or warn if Java is invalid/incompatible.
     if (javaIssue) {
       setIsLaunchModalOpen(false);
       setLaunchError({
@@ -265,7 +292,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setIsLaunching(true);
 
     try {
-      // 1. Ensure there is a version to launch.
+      // 4. Ensure there is a version to launch.
       let versionToLaunch =
         data.selectedInstance.version || data.selectedInstance.runtime?.minecraft;
 
@@ -283,7 +310,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return;
       }
 
-      // 2. If diagnose hook found missing/corrupt components, repair them first.
+      // 5. If diagnose hook found missing/corrupt components, repair them first.
       if (instruction) {
         console.log(
           'Installing missing components for instance before launch',
@@ -296,11 +323,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           data.selectedInstance.version || data.selectedInstance.runtime?.minecraft;
       }
 
-      // 3. Construct launch options and launch the game.
+      // 6. Construct launch options and launch the game.
       const options: LaunchOptions = {
         version: versionToLaunch,
         gameDirectory: data.selectedInstance.path,
-        user: data.activeAccount,
+        user: data.activeAccount!, // We know this is safe because userIssue check passed
         java: data.selectedInstance.java,
         maxMemory: data.selectedInstance.maxMemory,
         minMemory: data.selectedInstance.minMemory,
@@ -328,6 +355,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [
     data.selectedInstance,
     data.activeAccount,
+    userIssue,
+    fixUser,
     instruction,
     fix,
     launchService,
