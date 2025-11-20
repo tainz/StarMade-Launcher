@@ -22,10 +22,8 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
         installations, 
         servers,
         selectedInstance,
-        addInstallation,
         updateInstallation,
         deleteInstallation,
-        addServer,
         updateServer,
         deleteServer,
         getInstallationDefaults,
@@ -70,15 +68,15 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
     };
 
     const handleSave = (savedData: CreateInstanceOption | (EditInstanceOptions & { instancePath: string })) => {
-        if (activeTab === 'installations') {
-            if (isNew) {
-                addInstallation(savedData as CreateInstanceOption);
-            } else {
-                updateInstallation(savedData as EditInstanceOptions & { instancePath: string });
-            }
+        if (isNew) {
+            // STOP: Do not call addInstallation or addServer here.
+            // The InstallationForm component now uses the useInstanceCreation hook 
+            // to talk directly to the backend. Calling it here would cause the 
+            // "Double Creation" bug.
         } else {
-            if (isNew) {
-                addServer(savedData as CreateInstanceOption);
+            // Updates are still handled via DataContext for now
+            if (activeTab === 'installations') {
+                updateInstallation(savedData as EditInstanceOptions & { instancePath: string });
             } else {
                 updateServer(savedData as EditInstanceOptions & { instancePath: string });
             }

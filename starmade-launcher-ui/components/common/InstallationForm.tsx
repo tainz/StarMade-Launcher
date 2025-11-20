@@ -207,14 +207,16 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
 
   const handleSaveClick = async () => {
     if (isNew) {
-      // Use the Hook's create function
+      // Use the Hook's create function for BOTH Installations and Servers
+      // This ensures local dedicated servers get the full file installation process.
       const versionMeta = minecraftVersions.find(v => v.id === formState.version);
       try {
         // We pass the metadata so the hook can trigger the install immediately
         await create(versionMeta);
-        // We still call onSave to notify the parent to switch views, 
-        // though the hook handled the actual creation.
-        // We pass a dummy object or the actual data just to satisfy the interface
+        
+        // We still call onSave to notify the parent to switch views.
+        // The parent (Installations/index.tsx) will ignore the data for creation
+        // because we've already done it here.
         onSave({
             name: formState.name,
             version: formState.version,
