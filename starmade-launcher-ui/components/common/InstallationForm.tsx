@@ -41,9 +41,8 @@ const FormField: React.FC<{
 
 const branches: { value: ItemType; label: string }[] = [
   { value: 'release', label: 'Release' },
-  { value: 'dev', label: 'Dev' },
-  { value: 'pre', label: 'Pre-Release' },
-  { value: 'archive', label: 'Archive' },
+  { value: 'dev', label: 'Dev / Snapshot' },
+  { value: 'archive', label: 'Archive (Old Beta/Alpha)' },
 ];
 
 const resolutions = ['1280x720', '1920x1080', '2560x1440', '3840x2160'];
@@ -186,10 +185,24 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
     }
   }, [formState.memory, updateField]);
 
-  const versionOptions = useMemo(
-    () => minecraftVersions.map((v) => ({ value: v.id, label: v.id })),
-    [minecraftVersions],
-  );
+  // Filter versions based on the selected branch type
+  const versionOptions = useMemo(() => {
+    return minecraftVersions
+      .filter((v) => {
+        switch (type) {
+          case 'release':
+            return v.type === 'release';
+          case 'dev':
+          case 'pre':
+            return v.type === 'snapshot';
+          case 'archive':
+            return v.type === 'old_beta' || v.type === 'old_alpha';
+          default:
+            return v.type === 'release';
+        }
+      })
+      .map((v) => ({ value: v.id, label: v.id }));
+  }, [minecraftVersions, type]);
 
   const javaOptions = useMemo(
     () => [

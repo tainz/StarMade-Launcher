@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDownIcon, CheckIcon, BugIcon, ArchiveIcon, ChevronRightIcon, DiscordIcon } from '../common/icons';
 import useOnClickOutside from '../hooks/useOnClickOutside';
-import type { Version } from '../../types';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
-import { useLaunchButton } from '../hooks/useLaunchButton'; // Refactor 2 Import
+import { useLaunchButton } from '../hooks/useLaunchButton';
+import { getIconComponent } from '../../utils/getIconComponent';
 
 const DiscordButton: React.FC = () => {
     const [onlineCount, setOnlineCount] = useState<number | null>(null);
@@ -54,56 +54,65 @@ const DiscordButton: React.FC = () => {
     );
 };
 
-const VersionSelector: React.FC = () => {
+const InstanceSelector: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     useOnClickOutside(dropdownRef, () => setIsOpen(false));
-    const { versions, selectedVersion, setSelectedVersion } = useData();
+    
+    // Use installations and selectedInstance from DataContext
+    const { installations, selectedInstance, selectInstance } = useData();
 
-    const getIconForType = (type: Version['type']) => {
-        switch(type) {
-            case 'latest': return <CheckIcon className="w-5 h-5 text-green-400" />;
-            case 'release': return <CheckIcon className="w-5 h-5 text-green-400" />;
-            case 'dev': return <BugIcon className="w-5 h-5 text-orange-400" />;
-            case 'archive': return <ArchiveIcon className="w-5 h-5 text-gray-400" />;
-            default: return null;
-        }
+    // If no instance is selected or loaded yet
+    if (!selectedInstance) {
+        return (
+            <div className="flex items-center gap-3 pl-4 pr-3 py-2 bg-black/20 rounded-md border border-white/10 opacity-50">
+                <span className="text-sm text-gray-400">Select an Instance...</span>
+            </div>
+        );
     }
 
-    if (!selectedVersion) {
-        return null;
-    }
+    // Find the managed item view model for the selected instance to get the icon
+    const currentItem = installations.find(i => i.id === selectedInstance.path);
+    const iconName = currentItem?.icon || 'release';
 
-  return (
+    return (
     <div className="relative" ref={dropdownRef}>
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 pl-4 pr-3 py-2 bg-black/20 rounded-md hover:bg-black/40 transition-colors border border-white/10"
+        className="flex items-center gap-3 pl-4 pr-3 py-2 bg-black/20 rounded-md hover:bg-black/40 transition-colors border border-white/10 min-w-[200px]"
       >
-        <div className="flex items-center gap-2">
-            {getIconForType(selectedVersion.type)}
-            <div className="text-left">
-                <p className="text-sm font-medium text-white">{selectedVersion.name.split(' ').slice(0, 2).join(' ')}</p>
-                <p className="text-xs text-gray-400">{selectedVersion.name.split(' ').slice(2).join(' ')}</p>
+        <div className="flex items-center gap-2 flex-1">
+            {getIconComponent(iconName)}
+            <div className="text-left overflow-hidden">
+                <p className="text-sm font-medium text-white truncate max-w-[150px]">{selectedInstance.name}</p>
+                <p className="text-xs text-gray-400 truncate">
+                    {selectedInstance.version || selectedInstance.runtime.minecraft}
+                </p>
             </div>
         </div>
         <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
         {isOpen && (
-            <div className="absolute bottom-full mb-2 w-full bg-slate-900/90 backdrop-blur-sm border border-slate-700 rounded-md shadow-lg overflow-hidden z-20">
+            <div className="absolute bottom-full mb-2 w-full min-w-[240px] bg-slate-900/90 backdrop-blur-sm border border-slate-700 rounded-md shadow-lg overflow-hidden z-20 max-h-64 overflow-y-auto">
                 <ul>
-                    {versions.map(version => (
-                        <li key={version.id}>
+                    {installations.map(inst => (
+                        <li key={inst.id}>
                             <button 
                                 onClick={() => {
-                                    setSelectedVersion(version);
+                                    selectInstance(inst.id);
                                     setIsOpen(false);
                                 }}
                                 className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-700/50 transition-colors"
                             >
-                               {getIconForType(version.type)}
-                               <span className="text-sm text-white">{version.name}</span>
+                               {getIconComponent(inst.icon)}
+                               <div className="flex-1 min-w-0">
+                                   <p className="text-sm text-white truncate">{inst.name}</p>
+                                   <p className="text-xs text-gray-400 truncate">{inst.version}</p>
+                               </div>
+                               {selectedInstance.path === inst.id && (
+                                   <CheckIcon className="w-4 h-4 text-starmade-accent" />
+                               )}
                             </button>
                         </li>
                     ))}
@@ -133,7 +142,7 @@ const SciFiPlayButton: React.FC<SciFiPlayButtonProps> = ({
 }) => {
     const buttonClipPathId = "scifi-button-clip-path";
 
-    // Map color prop to Tailwind classes (simplified for this example)
+    // Map color prop to Tailwind classes
     const accentColor = color === 'orange' ? 'bg-orange-500' : 
                         color === 'blue' ? 'bg-blue-500' : 
                         'bg-starmade-accent';
@@ -195,7 +204,7 @@ const Footer: React.FC = () => {
   // Use the new hook to get button state
   const { text, color, loading, progress, onClick, disabled } = useLaunchButton();
 
-  // Handle completion cleanup if needed (though hook handles state)
+  // Handle completion cleanup
   useEffect(() => {
     if (!loading && progress === 100) {
         completeLaunching();
@@ -210,7 +219,7 @@ const Footer: React.FC = () => {
         </div>
         
         <div className="flex items-center justify-center gap-6">
-            <VersionSelector />
+            <InstanceSelector />
 
             <SciFiPlayButton 
                 text={text}
