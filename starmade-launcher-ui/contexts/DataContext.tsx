@@ -49,6 +49,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } = useInstanceServiceState();
 
     // 3. Instance View Model (Derived UI Data)
+    // This ensures installations and servers are derived from the same state source
+    // and automatically update when properties (like server host) change.
     const { installations, servers } = useInstanceViewModel(instances);
 
     // 4. Version State
@@ -89,9 +91,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const deleteInstallation = useCallback((id: string) => deleteInstance(id), [deleteInstance]);
     
-    const addServer = useCallback((options: CreateInstanceOption) => {
-        createInstanceRaw(options);
-    }, [createInstanceRaw]);
+    // Standardized Server Creation:
+    // A "Server" in this context is a Local Dedicated Server, which requires the same
+    // file installation logic as a client instance. We use createVanillaInstance here too.
+    const addServer = useCallback(async (options: CreateInstanceOption) => {
+        const versionMeta = minecraftVersions.find(v => v.id === options.version);
+        try {
+            await createVanillaInstance(options, versionMeta);
+        } catch (e) {
+            console.error("Failed during server creation:", e);
+        }
+    }, [createVanillaInstance, minecraftVersions]);
 
     const updateServer = useCallback((options: EditInstanceOptions & { instancePath: string }) => {
         editInstance(options);
