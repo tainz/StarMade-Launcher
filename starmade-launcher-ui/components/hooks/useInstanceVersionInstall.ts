@@ -7,6 +7,7 @@ import {
 } from '@xmcl/runtime-api';
 import { Instance, RuntimeVersions } from '@xmcl/instance';
 import { useService } from './useService';
+import { useVersionService } from './useVersionService';
 
 export interface InstanceInstallInstruction {
   instance: string;
@@ -31,12 +32,14 @@ export function useInstanceVersionInstall(
   const diagnoseService = useService(DiagnoseServiceKey);
   const installService = useService(InstallServiceKey);
   const versionService = useService(VersionServiceKey);
+  const { getMinecraftVersionList } = useVersionService();
 
   const [instruction, setInstruction] = useState<InstanceInstallInstruction | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
   const instance = instances.find((i) => i.path === instancePath);
 
+  // --- Diagnosis Logic ---
   useEffect(() => {
     // Early return if no instance
     if (!instance) {
@@ -44,7 +47,6 @@ export function useInstanceVersionInstall(
       return;
     }
 
-    // Flag to prevent state updates after unmount
     let cancelled = false;
 
     const diagnose = async () => {
@@ -57,7 +59,7 @@ export function useInstanceVersionInstall(
         if (cancelled) return;
 
         if (!resolved) {
-          // Version not installed, need to install
+          // Case 1: Version not installed at all. Full install needed.
           if (!cancelled) {
             setInstruction({
               instance: instancePath,
@@ -68,16 +70,24 @@ export function useInstanceVersionInstall(
           return;
         }
 
-        // Diagnose what's missing
-        const [jarIssue, libIssues, assetIssues] = await Promise.all([
+        // Case 2: Version exists, check for corruption/missing files
+        const [jarIssue, libIssues, assetIssues, profileIssue] = await Promise.all([
           diagnoseService.diagnoseJar(resolved, 'client'),
           diagnoseService.diagnoseLibraries(resolved),
           diagnoseService.diagnoseAssets(resolved),
+          diagnoseService.diagnoseProfile(resolved.id, 'client', instancePath),
         ]);
 
         if (cancelled) return;
 
-        if (jarIssue || libIssues.length > 0 || assetIssues.assets.length > 0) {
+        const hasIssues = 
+            jarIssue || 
+            libIssues.length > 0 || 
+            assetIssues.assets.length > 0 || 
+            assetIssues.assetIndex ||
+            profileIssue;
+
+        if (hasIssues) {
           setInstruction({
             instance: instancePath,
             runtime: instance.runtime,
@@ -87,9 +97,10 @@ export function useInstanceVersionInstall(
             libraries: libIssues,
             assets: assetIssues.assets,
             assetIndex: assetIssues.assetIndex,
+            profile: profileIssue,
           });
         } else {
-          setInstruction(undefined); // Everything is installed
+          setInstruction(undefined); // Everything is healthy
         }
       } catch (error) {
         console.error('Error diagnosing instance version:', error);
@@ -105,68 +116,109 @@ export function useInstanceVersionInstall(
 
     diagnose();
 
-    // Cleanup function
     return () => {
       cancelled = true;
     };
   }, [
-    instancePath,           // Only re-run if instance path changes
-    instance?.version,      // Or if version changes
+    instancePath,
+    instance?.version,
+    instance?.runtime, // Re-diagnose if runtime config changes
     diagnoseService,
     versionService,
   ]);
 
+  // --- Fix / Install Logic ---
   const fix = useCallback(async () => {
     if (!instruction || !instance) return;
 
     setLoading(true);
     try {
-      // Install missing components based on instruction
-      const installPromises: Promise<any>[] = [];
+      // Scenario A: Full Install (Version not resolved)
+      if (!instruction.resolvedVersion) {
+        console.log('Version not found, performing full install for:', instruction.version);
+        const list = await getMinecraftVersionList();
+        const meta = list.versions.find(v => v.id === instruction.version);
+        
+        if (meta) {
+          await installService.installMinecraft(meta);
+        } else {
+          throw new Error(`Could not find metadata for version ${instruction.version}`);
+        }
+        
+        // After full install, we clear instruction to trigger re-diagnosis
+        setInstruction(undefined);
+        return;
+      }
 
+      // Scenario B: Partial Repair (Jar, Libs, Assets)
+      const promises: Promise<any>[] = [];
+
+      // 1. Install Jar
       if (instruction.jar) {
-        installPromises.push(
-          installService.installMinecraftJar(
-            instruction.resolvedVersion!,
-            instruction.version,
-            instruction.runtime.minecraft,
-            'client'
-          )
-        );
+        promises.push(installService.installMinecraftJar(
+          instruction.resolvedVersion, 
+          instruction.version, 
+          instruction.runtime.minecraft, 
+          'client'
+        ));
       }
 
+      // 2. Install Libraries
       if (instruction.libraries && instruction.libraries.length > 0) {
-        installPromises.push(
-          installService.installLibraries(
-            instruction.libraries.map((l) => l.library),
-            instruction.runtime.minecraft
-          )
-        );
+        promises.push(installService.installLibraries(
+          instruction.libraries.map(l => l.library),
+          instruction.runtime.minecraft
+        ));
       }
 
-      if (instruction.assets && instruction.assets.length > 0) {
-        installPromises.push(
-          installService.installAssets(
-            instruction.assets.map((a) => a.asset),
-            instruction.runtime.minecraft
-          )
-        );
+      // 3. Install Asset Index (Crucial for vanilla)
+      if (instruction.assetIndex) {
+         // We need the version list to find the asset index URL
+         const list = await getMinecraftVersionList();
+         const versionMeta = list.versions.filter(v => v.id === instruction.runtime.minecraft);
+         
+         promises.push(installService.installAssetsForVersion(
+            instruction.assetIndex.version,
+            versionMeta
+         ));
+      } 
+      // 4. Install Specific Assets (Only if index is fine but files are missing)
+      else if (instruction.assets && instruction.assets.length > 0) {
+        promises.push(installService.installAssets(
+          instruction.assets.map(a => a.asset),
+          instruction.runtime.minecraft
+        ));
       }
 
-      // Install all components in parallel
-      await Promise.all(installPromises);
+      // 5. Install Profile (Installers)
+      if (instruction.profile) {
+          // For vanilla, this is rare, but for Forge/Fabric it handles the install profile
+          // We need to resolve the java path for the installer
+          // This is a simplified handling; full handling requires resolving Java logic
+          const javaPath = instance.java || javas.find(j => j.valid)?.path;
+          if (javaPath) {
+             promises.push(installService.installByProfile({
+                 profile: instruction.profile.installProfile,
+                 side: 'client',
+                 java: javaPath
+             }));
+          }
+      }
 
-      // Clear instruction after successful installation
-      setInstruction(undefined);
+      await Promise.all(promises);
       
-      console.log('Successfully installed missing components for instance:', instance.path);
-    } catch (error) {
-      console.error('Error installing missing components:', error);
-      throw error; // Re-throw so caller can handle
+      console.log('Successfully repaired instance:', instance.path);
+      
+      // Clear instruction to trigger re-diagnosis (which should now pass)
+      setInstruction(undefined); 
+
+    } catch (e) {
+      console.error("Failed to fix instance:", e);
+      throw e;
     } finally {
       setLoading(false);
     }
-  }, [instruction, instance, installService]);
+  }, [instruction, instance, installService, getMinecraftVersionList, javas]);
 
   return { instruction, fix, loading };
 }
