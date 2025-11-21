@@ -2,6 +2,7 @@ import React, { createContext, useContext, ReactNode, useCallback } from 'react'
 import type { DataContextType as OriginalDataContextType, ManagedItem } from '../types';
 import { useUserState } from '../components/hooks/useUserState';
 import { useInstanceServiceState } from '../components/hooks/useInstanceServiceState';
+import { useInstanceViewModel } from '../components/hooks/useInstanceViewModel';
 import { defaultInstallationData, defaultServerData } from '../data/mockData';
 import { CreateInstanceOption, EditInstanceOptions, Instance, MinecraftVersion } from '@xmcl/runtime-api';
 import { useJavaContext } from '../components/hooks/useJavaContext';
@@ -37,19 +38,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         error: userError 
     } = useUserState();
 
-    // 2. Instance State
+    // 2. Instance State (Raw Data & Actions)
     const {
-        instances, // Raw instances
+        instances, 
         selectedInstance,
-        installations, // Mapped ManagedItems
-        servers,       // Mapped ManagedItems
         addInstance: createInstanceRaw,
         editInstance,
         deleteInstance,
         selectInstance,
     } = useInstanceServiceState();
 
-    // 3. Version State
+    // 3. Instance View Model (Derived UI Data)
+    const { installations, servers } = useInstanceViewModel(instances);
+
+    // 4. Version State
     const { 
         minecraftVersions, 
         versions,
@@ -57,14 +59,14 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setSelectedVersion
     } = useVersionState();
 
-    // 4. Java State
+    // 5. Java State
     const { 
         all: javaVersions, 
         missing: javaIsMissing, 
         refresh: refreshJava 
     } = useJavaContext();
 
-    // 5. Installation Services
+    // 6. Installation Services
     const { createVanillaInstance } = useInstanceCreation();
 
     // --- Business Logic: Ensure "Latest Version" instance exists ---
