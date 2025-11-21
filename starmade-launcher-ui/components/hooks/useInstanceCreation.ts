@@ -16,6 +16,10 @@ export interface CreationFormState {
   memory: number;
   vmOptions: string;
   mcOptions: string;
+  // Server specific fields
+  isServer: boolean;
+  host: string;
+  port: string;
 }
 
 export function useInstanceCreation() {
@@ -23,7 +27,7 @@ export function useInstanceCreation() {
   const installService = useService(InstallServiceKey);
   const instanceInstallService = useService(InstanceInstallServiceKey);
   
-  // --- State Management (Vue Parity) ---
+  // --- State Management ---
   const [formState, setFormState] = useState<CreationFormState>({
     name: '',
     version: '',
@@ -31,6 +35,9 @@ export function useInstanceCreation() {
     memory: 4096,
     vmOptions: '',
     mcOptions: '',
+    isServer: false,
+    host: '',
+    port: '25565',
   });
 
   const [isCreating, setIsCreating] = useState(false);
@@ -49,6 +56,9 @@ export function useInstanceCreation() {
       memory: 4096,
       vmOptions: '',
       mcOptions: '',
+      isServer: false,
+      host: '',
+      port: '25565',
     });
     setError(null);
   }, []);
@@ -112,6 +122,15 @@ export function useInstanceCreation() {
           quiltLoader: '',
       }
     };
+
+    // Apply Server Configuration if applicable
+    if (formState.isServer) {
+      options.server = {
+        host: formState.host,
+        port: parseInt(formState.port, 10) || 25565
+      };
+    }
+
     return createVanillaInstance(options, versionMeta, files);
   }, [formState, createVanillaInstance]);
 

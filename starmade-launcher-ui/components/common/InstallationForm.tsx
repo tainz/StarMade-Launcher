@@ -5,6 +5,7 @@ import {
   ChevronDownIcon,
   CloseIcon,
   PencilIcon,
+  ServerIcon,
 } from './icons';
 import type { ManagedItem, ItemType } from '../../types';
 import { getIconComponent } from '../../utils/getIconComponent';
@@ -20,6 +21,7 @@ interface InstallationFormProps {
   onSave: (data: CreateInstanceOption | (EditInstanceOptions & { instancePath: string })) => void;
   onCancel: () => void;
   itemTypeName: string;
+  isServerMode?: boolean; // New prop to distinguish context
 }
 
 const FormField: React.FC<{
@@ -123,6 +125,7 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   onSave,
   onCancel,
   itemTypeName,
+  isServerMode = false,
 }) => {
   // --- Hook Integration ---
   const { formState, updateField, create, isCreating } = useInstanceCreation();
@@ -145,6 +148,15 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
     updateField('vmOptions', item.vmOptions ?? '');
     updateField('javaPath', item.java ?? '');
     
+    // Initialize Server Fields
+    updateField('isServer', isServerMode);
+    if (isServerMode && !isNew) {
+        // Note: In the current ViewModel, 'port' might contain the host string due to legacy mapping.
+        // We attempt to extract meaningful data if available.
+        updateField('host', item.port || ''); 
+        updateField('port', '25565'); // Default, as actual port number might be lost in ViewModel
+    }
+
     // Initialize Java UI helpers
     if (!item.java) {
       setJavaSelection('');
@@ -159,7 +171,7 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
         setCustomJavaPath(item.java);
       }
     }
-  }, [item, javaVersions, updateField]);
+  }, [item, javaVersions, updateField, isServerMode, isNew]);
 
   // Sync Java Selection to Form State
   useEffect(() => {
@@ -221,7 +233,6 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   const handleSaveClick = async () => {
     if (isNew) {
       // Use the Hook's create function for BOTH Installations and Servers
-      // This ensures local dedicated servers get the full file installation process.
       const versionMeta = minecraftVersions.find(v => v.id === formState.version);
       try {
         // We pass the metadata so the hook can trigger the install immediately
@@ -230,7 +241,6 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
         // Notify parent to close view. Data is irrelevant as creation is done.
         onSave({} as any); 
       } catch (e) {
-        // Error handled in hook (e.g. showing error state in UI)
         console.error("Creation failed", e);
       }
     } else {
@@ -250,6 +260,15 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
             quiltLoader: '',
         }
       };
+
+      // Attach Server Data if in Server Mode
+      if (isServerMode) {
+          editOptions.server = {
+              host: formState.host,
+              port: parseInt(formState.port, 10) || 25565
+          };
+      }
+
       onSave(editOptions);
     }
   };
@@ -313,6 +332,38 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
                 className="bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
               />
             </FormField>
+            
+            {/* Server Specific Fields */}
+            {isServerMode && (
+                <>
+                    <FormField label="Server Host" htmlFor="serverHost" className="col-span-1">
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                <ServerIcon className="w-5 h-5 text-gray-400" />
+                            </div>
+                            <input
+                                id="serverHost"
+                                type="text"
+                                value={formState.host}
+                                onChange={(e) => updateField('host', e.target.value)}
+                                placeholder="mc.example.com"
+                                className="w-full bg-slate-900/80 border border-slate-700 rounded-md py-2 pl-10 pr-3 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
+                            />
+                        </div>
+                    </FormField>
+                    <FormField label="Port" htmlFor="serverPort" className="col-span-1">
+                        <input
+                            id="serverPort"
+                            type="number"
+                            value={formState.port}
+                            onChange={(e) => updateField('port', e.target.value)}
+                            placeholder="25565"
+                            className="bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
+                        />
+                    </FormField>
+                </>
+            )}
+
             <FormField label="Branch" htmlFor="itemBranch">
               <CustomDropdown
                 options={branches}
@@ -331,14 +382,16 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
         </div>
 
         <div className="grid grid-cols-2 gap-x-8 gap-y-6">
-          <FormField label="Resolution" htmlFor="resolution">
-            <CustomDropdown
-              options={resolutions.map(r => ({ value: r, label: r }))}
-              value={resolution}
-              onChange={setResolution}
-              icon={<MonitorIcon className="w-5 h-5 text-gray-400" />}
-            />
-          </FormField>
+          {!isServerMode && (
+              <FormField label="Resolution" htmlFor="resolution">
+                <CustomDropdown
+                  options={resolutions.map(r => ({ value: r, label: r }))}
+                  value={resolution}
+                  onChange={setResolution}
+                  icon={<MonitorIcon className="w-5 h-5 text-gray-400" />}
+                />
+              </FormField>
+          )}
 
           <div className="col-span-2">
             <hr className="border-slate-800 my-2" />

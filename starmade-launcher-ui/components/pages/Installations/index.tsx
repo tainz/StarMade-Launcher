@@ -122,6 +122,7 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
                     onSave={handleSave}
                     onCancel={handleCancel}
                     itemTypeName={itemTypeName}
+                    isServerMode={activeTab === 'servers'}
                 />
             );
         }

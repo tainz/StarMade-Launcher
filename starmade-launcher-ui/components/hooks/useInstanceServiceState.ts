@@ -11,44 +11,107 @@ import { useService, useServiceMutation } from './useService';
 export function useInstanceServiceState() {
     const instanceService = useService(InstanceServiceKey);
 
-    const [state, setState] = useState<InstanceState | undefined>(undefined);
-    const [instances, setInstances] = useState<Instance[]>([]);
+    // 1. Backend Shared State (Required for subscriptions to work)
+    const [backendState, setBackendState] = useState<InstanceState | undefined>(undefined);
+
+    // 2. Local UI State (For rendering)
+    // We keep 'all' for O(1) lookups and 'list' for ordered UI rendering
+    const [data, setData] = useState<{ all: Record<string, Instance>; list: Instance[] }>({
+        all: {},
+        list: []
+    });
+
     const [selectedInstancePath, setSelectedInstancePath] = useState<string>(
         () => localStorage.getItem('selectedInstancePath') || ''
     );
 
-    // Effect to fetch the initial state
+    // Initial Fetch
     useEffect(() => {
-        instanceService.getSharedInstancesState().then(initialState => {
-            setState(initialState);
-            const allInstances = Object.values(initialState.all);
-            setInstances(allInstances);
+        instanceService.getSharedInstancesState().then(sharedState => {
+            // Store the backend object so useServiceMutation can subscribe to it
+            setBackendState(sharedState);
             
-            // Ensure a selection exists
-            if (!selectedInstancePath || !allInstances.some(i => i.path === selectedInstancePath)) {
-                const newPath = allInstances[0]?.path || '';
-                setSelectedInstancePath(newPath);
-                localStorage.setItem('selectedInstancePath', newPath);
-            }
+            // Initialize local data
+            setData({
+                all: { ...sharedState.all },
+                list: [...sharedState.instances]
+            });
         });
     }, [instanceService]);
 
-    // Mutation subscriptions to keep state in sync
-    useServiceMutation(state, 'instanceAdd', (instance: Instance) => {
-        setInstances(current => [...current, instance]);
+    // --- Mutations ---
+    // We pass 'backendState' here. Once it loads, the subscription activates.
+
+    useServiceMutation(backendState, 'instanceAdd', (instance: Instance) => {
+        setData(prev => {
+            // Prevent duplicates: if path exists, update it instead of adding
+            if (prev.all[instance.path]) {
+                const newAll = { ...prev.all, [instance.path]: instance };
+                // Update the item in the list without changing order/length
+                const newList = prev.list.map(i => i.path === instance.path ? instance : i);
+                return { all: newAll, list: newList };
+            }
+            // Add new instance
+            const newAll = { ...prev.all, [instance.path]: instance };
+            const newList = [...prev.list, instance];
+            return { all: newAll, list: newList };
+        });
     });
 
-    useServiceMutation(state, 'instanceRemove', (path: string) => {
-        setInstances(current => current.filter(i => i.path !== path));
+    useServiceMutation(backendState, 'instanceRemove', (path: string) => {
+        setData(prev => {
+            if (!prev.all[path]) return prev; // Nothing to remove
+            
+            const { [path]: removed, ...newAll } = prev.all;
+            const newList = prev.list.filter(i => i.path !== path);
+            
+            return { all: newAll, list: newList };
+        });
     });
 
-    useServiceMutation(state, 'instanceEdit', (payload: EditInstanceOptions & { path: string }) => {
-        setInstances(current => current.map(i => i.path === payload.path ? { ...i, ...payload } : i));
+    useServiceMutation(backendState, 'instanceEdit', (payload: EditInstanceOptions & { path: string }) => {
+        setData(prev => {
+            const existing = prev.all[payload.path];
+            if (!existing) return prev;
+            
+            const updated = { ...existing, ...payload };
+            const newAll = { ...prev.all, [payload.path]: updated };
+            const newList = prev.list.map(i => i.path === payload.path ? updated : i);
+            
+            return { all: newAll, list: newList };
+        });
     });
+
+    // --- Selection Logic (Auto-Select Guard) ---
+    
+    useEffect(() => {
+        const hasInstances = data.list.length > 0;
+        
+        // Check if selection is empty OR if the selected ID no longer exists in the loaded list
+        // (e.g. deleted externally or stale localStorage)
+        const isSelectionInvalid = !selectedInstancePath || !data.all[selectedInstancePath];
+
+        if (hasInstances && isSelectionInvalid) {
+            // Prefer "Latest Version" if it exists, otherwise first available
+            const latest = data.list.find(i => i.name === 'Latest Version');
+            const target = latest ? latest.path : data.list[0].path;
+            
+            console.log('Auto-selecting instance:', target);
+            
+            setSelectedInstancePath(target);
+            localStorage.setItem('selectedInstancePath', target);
+            
+            // Notify backend to update "Last Played" / Access time
+            instanceService.editInstance({ 
+                instancePath: target, 
+                lastAccessDate: Date.now() 
+            });
+        }
+    }, [data.list, data.all, selectedInstancePath, instanceService]);
 
     const selectedInstance = useMemo(() => {
-        return instances.find(i => i.path === selectedInstancePath) || null;
-    }, [instances, selectedInstancePath]);
+        return data.all[selectedInstancePath] || null;
+    }, [data.all, selectedInstancePath]);
 
     // --- Actions ---
 
@@ -62,7 +125,13 @@ export function useInstanceServiceState() {
 
     const deleteInstance = useCallback(async (path: string) => {
         await instanceService.deleteInstance(path);
-    }, [instanceService]);
+        // If we deleted the selected instance, clear selection
+        // The Auto-Select Guard above will catch this and select a new one automatically
+        if (path === selectedInstancePath) {
+            setSelectedInstancePath('');
+            localStorage.removeItem('selectedInstancePath');
+        }
+    }, [instanceService, selectedInstancePath]);
     
     const selectInstance = useCallback((path: string) => {
         localStorage.setItem('selectedInstancePath', path);
@@ -71,12 +140,9 @@ export function useInstanceServiceState() {
     }, [instanceService]);
 
     return {
-        // Raw Data
-        instances,
+        instances: data.list,
         selectedInstancePath,
         selectedInstance,
-        
-        // Actions
         addInstance,
         editInstance,
         deleteInstance,
