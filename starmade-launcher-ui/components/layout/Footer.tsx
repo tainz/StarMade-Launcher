@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDownIcon, CheckIcon, BugIcon, ArchiveIcon, ChevronRightIcon, DiscordIcon } from '../common/icons';
+import { ChevronDownIcon, CheckIcon, ChevronRightIcon, DiscordIcon } from '../common/icons';
 import useOnClickOutside from '../hooks/useOnClickOutside';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
@@ -62,8 +62,12 @@ const InstanceSelector: React.FC = () => {
     // Use installations and selectedInstance from DataContext
     const { installations, selectedInstance, selectInstance } = useData();
 
+    // Find the managed item view model for the selected instance
+    // This ensures we use the same data (icon, formatted version) as the list
+    const currentItem = installations.find(i => i.id === selectedInstance?.path);
+
     // If no instance is selected or loaded yet
-    if (!selectedInstance) {
+    if (!selectedInstance || !currentItem) {
         return (
             <div className="flex items-center gap-3 pl-4 pr-3 py-2 bg-black/20 rounded-md border border-white/10 opacity-50">
                 <span className="text-sm text-gray-400">Select an Instance...</span>
@@ -71,9 +75,7 @@ const InstanceSelector: React.FC = () => {
         );
     }
 
-    // Find the managed item view model for the selected instance to get the icon
-    const currentItem = installations.find(i => i.id === selectedInstance.path);
-    const iconName = currentItem?.icon || 'release';
+    const iconName = currentItem.icon || 'release';
 
     return (
     <div className="relative" ref={dropdownRef}>
@@ -84,9 +86,9 @@ const InstanceSelector: React.FC = () => {
         <div className="flex items-center gap-2 flex-1">
             {getIconComponent(iconName)}
             <div className="text-left overflow-hidden">
-                <p className="text-sm font-medium text-white truncate max-w-[150px]">{selectedInstance.name}</p>
+                <p className="text-sm font-medium text-white truncate max-w-[150px]">{currentItem.name}</p>
                 <p className="text-xs text-gray-400 truncate">
-                    {selectedInstance.version || selectedInstance.runtime.minecraft}
+                    {currentItem.version}
                 </p>
             </div>
         </div>

@@ -32,7 +32,8 @@ export function useInstanceJavaDiagnose(status: InstanceJavaStatus | undefined) 
     }
 
     // Any non-matched compatibility → Incompatible Java
-    if (compatible !== JavaCompatibleState.Matched) {
+    // FIX: Allow Matched AND Recommended states.
+    if (compatible !== JavaCompatibleState.Matched && compatible !== JavaCompatibleState.Recommended) {
       const currentVersion = java?.version ?? 'unknown';
       const preferredVersion = preferredJava?.version ?? 'a different version';
       return {

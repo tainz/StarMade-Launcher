@@ -36,7 +36,8 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
             setView('list');
             setActiveItem(null);
         }
-    }, [initialTab, activeTab]);
+        // FIX: Removed activeTab from dependencies to prevent navigation lock
+    }, [initialTab]);
 
     const { items, itemTypeName, cardActionButtonText, cardStatusLabel, deleteFunc } = activeTab === 'installations' 
     ? { 

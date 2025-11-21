@@ -136,11 +136,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         versionToLaunch = data.selectedInstance.version || data.selectedInstance.runtime?.minecraft;
       }
 
+      // FIX: Resolve Java Path if "Auto" is selected
+      // If data.selectedInstance.java is empty string (Auto), we use the resolved path from javaStatus
+      const configuredJava = data.selectedInstance.java;
+      let finalJavaPath = configuredJava;
+
+      if (!finalJavaPath && javaStatus?.java?.path) {
+          finalJavaPath = javaStatus.java.path;
+          console.log("Auto-resolved Java path:", finalJavaPath);
+      }
+
       const options: LaunchOptions = {
         version: versionToLaunch,
         gameDirectory: data.selectedInstance.path,
         user: data.activeAccount!,
-        java: data.selectedInstance.java,
+        java: finalJavaPath, // Use the resolved path
         maxMemory: data.selectedInstance.maxMemory,
         minMemory: data.selectedInstance.minMemory,
         vmOptions: data.selectedInstance.vmOptions,
@@ -154,7 +164,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [
     data.selectedInstance, data.activeAccount, userIssue, fixUser, javaIssue, 
-    instruction, fix, launch, setLaunchError, clearGameExitError, clearLaunchError
+    instruction, fix, launch, setLaunchError, clearGameExitError, clearLaunchError,
+    javaStatus // Add javaStatus to dependencies
   ]);
 
   const completeLaunching = () => {

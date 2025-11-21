@@ -121,7 +121,15 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         [minecraftVersions],
     );
 
-    const getServerDefaults = () => ({ ...defaultServerData, id: Date.now().toString() });
+    const getServerDefaults = useCallback(
+        () => ({ 
+            ...defaultServerData, 
+            // FIX: Use dynamic version logic identical to installations
+            version: minecraftVersions.find(v => v.type === 'release')?.id || defaultServerData.version,
+            id: Date.now().toString() 
+        }),
+        [minecraftVersions],
+    );
     
     const value: DataContextType = {
         accounts: users,

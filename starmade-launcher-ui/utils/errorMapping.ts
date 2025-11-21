@@ -11,33 +11,37 @@ export interface LaunchErrorDisplay {
  * Mirrors logic from xmcl-keystone-ui/src/composables/launchException.ts
  */
 export const getLaunchErrorMessage = (e: any): LaunchErrorDisplay => {
+  // Handle nested exception object (common in IPC errors)
+  // The backend often sends { exception: { type: ... }, name: ... }
+  const exception = e?.exception || e;
+
   // Check if it's a structured LaunchException from backend
-  if (e && typeof e === 'object' && 'type' in e) {
-    switch (e.type) {
+  if (exception && typeof exception === 'object' && 'type' in exception) {
+    switch (exception.type) {
       case 'launchInvalidJavaPath':
         return { 
           title: 'Invalid Java Path', 
-          description: `The Java path is invalid: ${e.javaPath}. Please check your installation settings.` 
+          description: `The Java path is invalid: ${exception.javaPath}. Please check your installation settings.` 
         };
       case 'launchJavaNoPermission':
         return {
           title: 'Java Permission Denied',
-          description: `The launcher does not have permission to execute Java at: ${e.javaPath}. Check your antivirus or file permissions.`
+          description: `The launcher does not have permission to execute Java at: ${exception.javaPath}. Check your antivirus or file permissions.`
         };
       case 'launchNoProperJava':
         return { 
           title: 'No Java Found', 
-          description: `No compatible Java version found for Minecraft ${e.version}. Please install the recommended Java version.` 
+          description: `No compatible Java version found for Minecraft ${exception.version || 'unknown'}. Please install the recommended Java version.` 
         };
       case 'launchNoVersionInstalled':
         return { 
           title: 'Version Not Installed', 
-          description: `The version ${e.options?.version} is not fully installed. Please try repairing the installation.` 
+          description: `The version ${exception.options?.version} is not fully installed. Please try repairing the installation.` 
         };
       case 'launchBadVersion':
         return {
           title: 'Bad Version',
-          description: `The version ${e.version} is invalid or corrupted.`
+          description: `The version ${exception.version} is invalid or corrupted.`
         };
       case 'launchSpawnProcessFailed':
         return {
