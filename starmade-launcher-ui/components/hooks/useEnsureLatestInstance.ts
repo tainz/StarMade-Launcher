@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Instance, MinecraftVersion, CreateInstanceOption, EditInstanceOptions } from '@xmcl/runtime-api';
 
 /**
@@ -9,9 +9,15 @@ export function useEnsureLatestInstance(
     instances: Instance[],
     minecraftVersions: MinecraftVersion[],
     createInstance: (options: CreateInstanceOption, versionMeta: MinecraftVersion | undefined) => Promise<string>,
-    editInstance: (options: EditInstanceOptions & { instancePath: string }) => Promise<void>
+    editInstance: (options: EditInstanceOptions & { instancePath: string }) => Promise<void>,
+    isInitialized: boolean
 ) {
+    const creatingRef = useRef(false);
+
     useEffect(() => {
+        // 0. Wait for initialization to avoid creating duplicates of existing instances
+        if (!isInitialized) return;
+
         // 1. Wait for version manifest to load
         if (minecraftVersions.length === 0) return;
 
@@ -24,12 +30,21 @@ export function useEnsureLatestInstance(
 
         if (!latestInstance) {
             // Case A: Create it if missing
+            // Use ref to prevent double-creation race conditions
+            if (creatingRef.current) return;
+            
             console.log('Creating default "Latest Version" instance...');
+            creatingRef.current = true;
+            
             createInstance({
                 name: 'Latest Version',
                 version: latestRelease.id,
                 icon: 'rocket', // Default icon
-            }, latestRelease).catch(e => console.error("Failed to create Latest Version instance", e));
+            }, latestRelease)
+            .catch(e => console.error("Failed to create Latest Version instance", e))
+            .finally(() => {
+                creatingRef.current = false;
+            });
         } else {
             // Case B: Update it if out of date
             const currentVersion = latestInstance.version || latestInstance.runtime.minecraft;
@@ -46,5 +61,5 @@ export function useEnsureLatestInstance(
                 }).catch(e => console.error("Failed to update Latest Version instance", e));
             }
         }
-    }, [instances, minecraftVersions, createInstance, editInstance]);
+    }, [instances, minecraftVersions, createInstance, editInstance, isInitialized]);
 }

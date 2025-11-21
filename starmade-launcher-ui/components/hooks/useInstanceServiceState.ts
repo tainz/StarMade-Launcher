@@ -147,5 +147,6 @@ export function useInstanceServiceState() {
         editInstance,
         deleteInstance,
         selectInstance,
+        isInitialized: !!backendState, // Expose initialization state
     };
 }

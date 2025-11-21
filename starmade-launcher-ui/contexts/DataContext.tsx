@@ -46,6 +46,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         editInstance,
         deleteInstance,
         selectInstance,
+        isInitialized, // Get initialization state
     } = useInstanceServiceState();
 
     // 3. Instance View Model (Derived UI Data)
@@ -72,7 +73,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const { createVanillaInstance } = useInstanceCreation();
 
     // --- Business Logic: Ensure "Latest Version" instance exists ---
-    useEnsureLatestInstance(instances, minecraftVersions, createVanillaInstance, editInstance);
+    // Pass isInitialized to prevent race conditions
+    useEnsureLatestInstance(instances, minecraftVersions, createVanillaInstance, editInstance, isInitialized);
 
     // --- Orchestration Actions ---
 
