@@ -69,16 +69,15 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
 
     const handleSave = (savedData: CreateInstanceOption | (EditInstanceOptions & { instancePath: string })) => {
         if (isNew) {
-            // STOP: Do not call addInstallation or addServer here.
-            // The InstallationForm component now uses the useInstanceCreation hook 
-            // to talk directly to the backend. Calling it here would cause the 
-            // "Double Creation" bug.
+            // Creation is handled entirely within InstallationForm via useInstanceCreation hook.
+            // We do nothing here but close the view.
         } else {
-            // Updates are still handled via DataContext for now
+            // Updates are handled via DataContext
+            const editOptions = savedData as EditInstanceOptions & { instancePath: string };
             if (activeTab === 'installations') {
-                updateInstallation(savedData as EditInstanceOptions & { instancePath: string });
+                updateInstallation(editOptions);
             } else {
-                updateServer(savedData as EditInstanceOptions & { instancePath: string });
+                updateServer(editOptions);
             }
         }
         setView('list');

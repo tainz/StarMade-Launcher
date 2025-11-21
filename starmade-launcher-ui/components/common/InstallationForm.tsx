@@ -227,19 +227,14 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
         // We pass the metadata so the hook can trigger the install immediately
         await create(versionMeta);
         
-        // We still call onSave to notify the parent to switch views.
-        // The parent (Installations/index.tsx) will ignore the data for creation
-        // because we've already done it here.
-        onSave({
-            name: formState.name,
-            version: formState.version,
-            runtime: { minecraft: formState.version }
-        } as any); 
+        // Notify parent to close view. Data is irrelevant as creation is done.
+        onSave({} as any); 
       } catch (e) {
-        // Error handled in hook
+        // Error handled in hook (e.g. showing error state in UI)
+        console.error("Creation failed", e);
       }
     } else {
-      // Edit Mode: Construct options manually
+      // Edit Mode: Construct options manually and pass to parent
       const editOptions: EditInstanceOptions & { instancePath: string } = {
         instancePath: item.id,
         name: formState.name,
