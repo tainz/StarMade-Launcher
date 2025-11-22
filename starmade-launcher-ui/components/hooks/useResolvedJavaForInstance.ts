@@ -41,7 +41,7 @@ export function useResolvedJavaForInstance(
   resolvedVersion: ResolvedVersion | undefined,
   allJava: JavaRecord[]
 ): { status: ResolvedJavaForInstance | undefined; refreshing: boolean } {
-  const javaService = useService(JavaServiceKey);
+  const { resolveJava } = useService(JavaServiceKey);
   const [status, setStatus] = useState<ResolvedJavaForInstance | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -73,10 +73,9 @@ export function useResolvedJavaForInstance(
         );
 
         // Step 2: Resolve manual vs automatic (mirrors Vue's getAutoOrManuallJava)
-        // FIXED: Pass the full javaService object, not just resolveJava function
         const result = await getAutoOrManuallJava(
           detected,
-          javaService,  // Pass service object as Vue does
+          resolveJava,
           instance.java
         );
 
@@ -90,7 +89,6 @@ export function useResolvedJavaForInstance(
           compatible: result.quality,
           preferredJava: result.auto.java,
           finalJavaPath: (result.java ?? result.auto.java)?.path,
-          // ADDED: Include requirement for better diagnosis messaging
           requirement: resolvedVersion?.javaVersion,
         };
 
@@ -112,6 +110,8 @@ export function useResolvedJavaForInstance(
     return () => {
       cancelled = true;
     };
+    // FIXED: Removed resolveJava from dependencies to prevent infinite loop
+    // Service functions are not stable references and shouldn't be in dependency arrays
   }, [
     instance?.path,
     instance?.version,
@@ -119,11 +119,11 @@ export function useResolvedJavaForInstance(
     instance?.runtime.minecraft,
     instance?.runtime.forge,
     resolvedVersion?.id,
-    javaKey,  // FIXED: Use stable key instead of allJava.length
-    javaService,
+    javaKey,
+    // resolveJava removed - it's a service function, not a reactive value
   ]);
 
-  return { status, refreshing };  // FIXED: Return refreshing state
+  return { status, refreshing };
 }
 
 /**
@@ -151,6 +151,6 @@ export function getJavaPathForInstallProfile(
   );
 
   // Priority 3: Return JavaVersion object (signals auto-install needed)
-  // NOTE: Future enhancement could trigger Java installation here
   return validJava ? validJava.path : resolved.javaVersion;
 }
+
