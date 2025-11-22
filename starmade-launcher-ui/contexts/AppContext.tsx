@@ -8,6 +8,7 @@ import { useInstanceJava } from '../components/hooks/useInstanceJava';
 import { useInstanceJavaDiagnose } from '../components/hooks/useInstanceJavaDiagnose';
 import { useUserDiagnose } from '../components/hooks/useUserDiagnose';
 import { useInstanceLaunch } from '../components/hooks/useInstanceLaunch';
+import { useResolvedJavaForInstance } from '../components/hooks/useResolvedJavaForInstance';
 
 type InternalAppContextType = AppContextType & {
   launchError: any;
@@ -26,44 +27,52 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const data = useData();
   const { tasks, pause, resume, cancel } = useTaskManager();
-  
-  // --- USE THE NEW HOOK ---
-  const { 
-    launch, 
-    isLaunching, 
-    setIsLaunching, 
-    launchError, 
-    setLaunchError, 
-    clearLaunchError, 
-    gameExitError, 
-    clearGameExitError 
-  } = useInstanceLaunch();
+
+  const { launch, isLaunching, setIsLaunching, launchError, setLaunchError, clearLaunchError, gameExitError, clearGameExitError } =
+    useInstanceLaunch();
 
   // --- DIAGNOSIS HOOKS ---
   const javaVersions = data.javaVersions ?? [];
-  const { status: javaStatus } = useInstanceJava(data.selectedInstance, javaVersions);
+
+  // FIXED: Use useInstanceJava for diagnosis (returns InstanceJavaStatus)
+  const { status: javaStatus, refreshing: javaRefreshing } = useInstanceJava(
+    data.selectedInstance,
+    javaVersions
+  );
+
+  // FIXED: Pass InstanceJavaStatus to diagnosis hook (correct type)
   const { issue: javaIssue } = useInstanceJavaDiagnose(javaStatus);
+
   const { issue: userIssue, fix: fixUser } = useUserDiagnose();
 
   const selectedInstanceArray = useMemo(
     () => (data.selectedInstance ? [data.selectedInstance] : []),
-    [data.selectedInstance],
+    [data.selectedInstance]
   );
 
   const { instruction, fix, loading: fixingVersion } = useInstanceVersionInstall(
     data.selectedInstance?.path ?? '',
     selectedInstanceArray,
-    javaVersions,
+    javaVersions
+  );
+
+  // ADDED: Use centralized resolver for finalJavaPath only (not for diagnosis)
+  const { status: resolvedJava } = useResolvedJavaForInstance(
+    data.selectedInstance,
+    undefined,  // No resolved version needed for launch Java selection
+    javaVersions
   );
 
   // --- PROGRESS SYNC ---
   const launchProgress = useMemo(() => {
     const activeTasks = tasks.filter((t) => t.state === TaskState.Running);
     if (activeTasks.length === 0) return 0;
+
     const totalProgress = activeTasks.reduce((sum, t) => {
       if (t.total <= 0) return sum;
       return sum + (t.progress / t.total) * 100;
     }, 0);
+
     return totalProgress / activeTasks.length;
   }, [tasks]);
 
@@ -71,47 +80,56 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setProgress(launchProgress);
   }, [launchProgress]);
 
-  // Sync isLaunching with tasks
   useEffect(() => {
     const hasActiveTasks = tasks.some((t) => t.state === TaskState.Running);
+
     if (hasActiveTasks && !isLaunching) {
-        setIsLaunching(true);
+      setIsLaunching(true);
     } else if (!hasActiveTasks && isLaunching) {
       const timeout = setTimeout(() => {
-        if (progress === 0) setIsLaunching(false); 
+        if (progress <= 0) {
+          setIsLaunching(false);
+        }
       }, 1500);
       return () => clearTimeout(timeout);
     }
   }, [tasks, isLaunching, setIsLaunching, progress]);
 
-  const navigate = (page: Page, props: PageProps = {}) => {
+  const navigate = (page: Page, props?: PageProps) => {
     setActivePage(page);
-    setPageProps(props);
+    setPageProps(props ?? {});
   };
 
   const openLaunchModal = () => {
-    if (!isLaunching && !fixingVersion) setIsLaunchModalOpen(true);
+    if (!isLaunching && !fixingVersion) {
+      setIsLaunchModalOpen(true);
+    }
   };
-  const closeLaunchModal = () => setIsLaunchModalOpen(false);
 
-  // --- ORCHESTRATION LOGIC ---
+  const closeLaunchModal = () => {
+    setIsLaunchModalOpen(false);
+  };
+
+  // --- LAUNCH ORCHESTRATION ---
   const startLaunching = useCallback(async () => {
     if (!data.selectedInstance) {
       setLaunchError({ title: 'No Instance Selected', description: 'Please select an installation.' });
       return;
     }
 
+    // Step 1: Fix user session
     if (userIssue) {
       setIsLaunchModalOpen(false);
       try {
         await fixUser();
-        return; 
+        return;
       } catch (e) {
         setLaunchError({ title: 'Login Failed', description: 'Could not refresh session.' });
         return;
       }
     }
 
+    // Step 2: Check Java compatibility
     if (javaIssue) {
       setIsLaunchModalOpen(false);
       setLaunchError({ title: javaIssue.title, description: javaIssue.description });
@@ -130,27 +148,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return;
       }
 
+      // Step 3: Fix version/assets if needed
       if (instruction) {
-        console.log('Fixing instance...', instruction);
+        console.log('[AppContext] Fixing instance...', instruction);
         await fix();
         versionToLaunch = data.selectedInstance.version || data.selectedInstance.runtime?.minecraft;
       }
 
-      // FIX: Resolve Java Path if "Auto" is selected
-      // If data.selectedInstance.java is empty string (Auto), we use the resolved path from javaStatus
-      const configuredJava = data.selectedInstance.java;
-      let finalJavaPath = configuredJava;
+      // Step 4: Get final Java path from centralized resolver
+      const finalJavaPath = resolvedJava?.finalJavaPath;
 
-      if (!finalJavaPath && javaStatus?.java?.path) {
-          finalJavaPath = javaStatus.java.path;
-          console.log("Auto-resolved Java path:", finalJavaPath);
+      if (!finalJavaPath) {
+        setLaunchError({ title: 'No Java Found', description: 'Cannot launch without a valid Java installation.' });
+        return;
       }
+
+      console.log('[AppContext] Launching with Java:', finalJavaPath);
 
       const options: LaunchOptions = {
         version: versionToLaunch,
         gameDirectory: data.selectedInstance.path,
         user: data.activeAccount!,
-        java: finalJavaPath, // Use the resolved path
+        java: finalJavaPath,  // Use centralized resolver's output
         maxMemory: data.selectedInstance.maxMemory,
         minMemory: data.selectedInstance.minMemory,
         vmOptions: data.selectedInstance.vmOptions,
@@ -158,14 +177,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
 
       await launch(options);
-
     } catch (e) {
-      console.error("Launch flow error", e);
+      console.error('[AppContext] Launch error:', e);
     }
   }, [
-    data.selectedInstance, data.activeAccount, userIssue, fixUser, javaIssue, 
-    instruction, fix, launch, setLaunchError, clearGameExitError, clearLaunchError,
-    javaStatus // Add javaStatus to dependencies
+    data.selectedInstance,
+    data.activeAccount,
+    userIssue,
+    fixUser,
+    javaIssue,
+    instruction,
+    fix,
+    launch,
+    setLaunchError,
+    clearGameExitError,
+    clearLaunchError,
+    resolvedJava,  // Depend on resolver for finalJavaPath
   ]);
 
   const completeLaunching = () => {
