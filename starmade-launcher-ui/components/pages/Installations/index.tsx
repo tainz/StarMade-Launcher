@@ -5,7 +5,12 @@ import ItemCard from '../../common/ItemCard';
 import type { ManagedItem, InstallationsTab } from '../../../types';
 import PageContainer from '../../common/PageContainer';
 import { useData } from '../../../contexts/DataContext';
-import { CreateInstanceOption, EditInstanceOptions } from '@xmcl/runtime-api';
+import { CreateInstanceOption } from '@xmcl/runtime-api';
+
+// Match InstallationForm's discriminated union types
+type CreateSaveData = CreateInstanceOption & { instancePath: string };
+type EditSaveData = { instancePath: string };
+type SaveData = CreateSaveData | EditSaveData;
 
 interface InstallationsProps {
   initialTab?: InstallationsTab;
@@ -22,9 +27,7 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
         installations, 
         servers,
         selectedInstance,
-        updateInstallation,
         deleteInstallation,
-        updateServer,
         deleteServer,
         getInstallationDefaults,
         getServerDefaults,
@@ -36,7 +39,6 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
             setView('list');
             setActiveItem(null);
         }
-        // FIX: Removed activeTab from dependencies to prevent navigation lock
     }, [initialTab]);
 
     const { items, itemTypeName, cardActionButtonText, cardStatusLabel, deleteFunc } = activeTab === 'installations' 
@@ -68,19 +70,13 @@ const Installations: React.FC<InstallationsProps> = ({ initialTab }) => {
         setView('form');
     };
 
-    const handleSave = (savedData: CreateInstanceOption | (EditInstanceOptions & { instancePath: string })) => {
-        if (isNew) {
-            // Creation is handled entirely within InstallationForm via useInstanceCreation hook.
-            // We do nothing here but close the view.
-        } else {
-            // Updates are handled via DataContext
-            const editOptions = savedData as EditInstanceOptions & { instancePath: string };
-            if (activeTab === 'installations') {
-                updateInstallation(editOptions);
-            } else {
-                updateServer(editOptions);
-            }
-        }
+    // FIXED: No longer calls updateInstallation/updateServer in edit mode
+    // Edit persistence is handled entirely by useInstanceEdit inside InstallationForm
+    const handleSave = (savedData: SaveData) => {
+        // For both create and edit modes:
+        // - Create: handled by useInstanceCreation inside InstallationForm
+        // - Edit: handled by useInstanceEdit.saveEdit() + JIT autosave inside InstallationForm
+        // This handler is purely a UI event to close the form
         setView('list');
         setActiveItem(null);
     };

@@ -28,6 +28,88 @@ function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T &
 }
 
 /**
+ * TypeScript interface for useInstanceEdit return type
+ */
+export interface UseInstanceEditReturn {
+  data: {
+    path: string;
+    name: string;
+    host: string;
+    port: string;
+    author: string;
+    description: string;
+    url: string;
+    fileServerApi: string;
+    vmOptions: string | undefined;
+    mcOptions: string | undefined;
+    prependCommand: string | undefined;
+    preExecuteCommand: string | undefined;
+    maxMemory: number | undefined;
+    minMemory: number | undefined;
+    env: Record<string, string>;
+    runtime: Instance['runtime'];
+    version: string;
+    fastLaunch: boolean | undefined;
+    hideLauncher: boolean | undefined;
+    showLog: boolean | undefined;
+    disableElyByAuthlib: boolean | undefined;
+    disableAuthlibInjector: boolean | undefined;
+    assignMemory: boolean | undefined;
+    javaPath: string;
+    icon: string;
+    resolution: { width: number; height: number } | undefined;
+  };
+  loading: boolean;
+  assignMemory: boolean;
+  minMemory: number;
+  maxMemory: number;
+  vmOptions: string;
+  mcOptions: string;
+  prependCommand: string;
+  preExecuteCommand: string;
+  fastLaunch: boolean;
+  hideLauncher: boolean;
+  showLog: boolean;
+  disableAuthlibInjector: boolean;
+  disableElyByAuthlib: boolean;
+  resolution: { width: number; height: number } | undefined;
+  host: string;
+  port: string;
+  isGlobalAssignMemory: boolean;
+  isGlobalMinMemory: boolean;
+  isGlobalMaxMemory: boolean;
+  isGlobalVmOptions: boolean;
+  isGlobalMcOptions: boolean;
+  isGlobalFastLaunch: boolean;
+  isGlobalHideLauncher: boolean;
+  isGlobalShowLog: boolean;
+  isGlobalDisableElyByAuthlib: boolean;
+  isGlobalDisableAuthlibInjector: boolean;
+  isGlobalPrependCommand: boolean;
+  isGlobalPreExecuteCommand: boolean;
+  isGlobalResolution: boolean;
+  resetAssignMemory: () => void;
+  resetVmOptions: () => void;
+  resetMcOptions: () => void;
+  resetFastLaunch: () => void;
+  resetHideLauncher: () => void;
+  resetShowLog: () => void;
+  resetDisableAuthlibInjector: () => void;
+  resetDisableElyByAuthlib: () => void;
+  resetPrependCommand: () => void;
+  resetPreExecuteCommand: () => void;
+  resetResolution: () => void;
+  updateField: <K extends keyof UseInstanceEditReturn['data']>(
+    key: K,
+    value: UseInstanceEditReturn['data'][K]
+  ) => void;
+  save: () => Promise<void>;
+  load: () => void;
+  flushNow: () => Promise<void>;
+  isModified: boolean;
+}
+
+/**
  * Hook to edit an instance, mirroring Vue's instanceEdit.ts composable.
  * 
  * Provides JIT (just-in-time) autosave with debounced batching.
@@ -41,6 +123,7 @@ function debounce<T extends (...args: any[]) => any>(func: T, wait: number): T &
  * ✓ Server port fallback handling
  * ✓ Accepts editInstance as parameter
  * ✓ No external dependencies (inline debounce)
+ * ✓ Explicit TypeScript return type with host/port
  * 
  * @param instance - The instance to edit
  * @param editInstance - editInstance function from InstanceServiceKey
@@ -64,7 +147,7 @@ export function useInstanceEdit(
     globalPreExecuteCommand: string;
     globalResolution: { width: number; height: number } | undefined;
   }
-) {
+): UseInstanceEditReturn {
   // --- Core Data State ---
   const [data, setData] = useState({
     path: '',
@@ -451,6 +534,8 @@ export function useInstanceEdit(
     disableAuthlibInjector,
     disableElyByAuthlib,
     resolution,
+    host: data.host,
+    port: data.port,
     isGlobalAssignMemory,
     isGlobalMinMemory,
     isGlobalMaxMemory,
@@ -482,4 +567,3 @@ export function useInstanceEdit(
     isModified,
   };
 }
-

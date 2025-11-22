@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   FolderIcon,
   MonitorIcon,
@@ -17,10 +17,15 @@ import { useInstanceCreation } from '../hooks/useInstanceCreation';
 import { useInstanceEdit } from '../hooks/useInstanceEdit';
 import { CreateInstanceOption, EditInstanceOptions } from '@xmcl/runtime-api';
 
+// OPTION 1: Discriminated union types for save data
+type CreateSaveData = CreateInstanceOption & { instancePath: string };
+type EditSaveData = { instancePath: string };
+type SaveData = CreateSaveData | EditSaveData;
+
 interface InstallationFormProps {
   item: ManagedItem;
   isNew: boolean;
-  onSave: (data: CreateInstanceOption | (EditInstanceOptions & { instancePath: string })) => void;
+  onSave: (data: SaveData) => void;  // Type-safe, no 'as any' needed
   onCancel: () => void;
   itemTypeName: string;
   isServerMode?: boolean;
@@ -135,10 +140,9 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   } = useData();
   const { registerPreLaunchFlush, unregisterPreLaunchFlush } = useApp();
 
-  // Locate backing instance for edit mode
   const instance = useMemo(
-    () => (!isNew ? instances.find((i) => i.path === item.id) ?? null : null),
-    [isNew, instances, item.id],
+    () => (!isNew ? instances.find((i) => i.path === item.path) ?? null : null),
+    [isNew, instances, item.path],
   );
 
   // Create-mode hook
@@ -152,6 +156,8 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
     save: saveEdit,
     maxMemory: editMaxMemory,
     vmOptions: editVmOptions,
+    host: editHost,
+    port: editPort,
     flushNow,
   } = editHook;
 
@@ -166,6 +172,8 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   const [javaSelection, setJavaSelection] = useState<string>('');
   const [customJavaPath, setCustomJavaPath] = useState('');
 
+  const lastMemoryRef = useRef<number | undefined>(undefined);
+
   // Initialize form state for create + edit
   useEffect(() => {
     if (isNew) {
@@ -176,12 +184,11 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
       updateField('javaPath', item.java ?? '');
 
       updateField('isServer', isServerMode);
-      if (isServerMode && !isNew) {
+      if (isServerMode) {
         updateField('host', item.port || '');
         updateField('port', '25565');
       }
     } else if (instance) {
-      // Icon initial value for edit comes from instance
       setIcon(instance.icon);
     }
 
@@ -201,21 +208,25 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
     }
   }, [isNew, item, instance, javaVersions, updateField, isServerMode]);
 
-  // Sync Java selection into underlying form state
+  // Java sync (mode-aware)
   useEffect(() => {
     const value = javaSelection === CUSTOM_JAVA_VALUE ? customJavaPath : javaSelection;
     if (isNew) {
       updateField('javaPath', value);
-    } else {
+    } else if (instance) {
       updateEditField('javaPath', value);
     }
-  }, [javaSelection, customJavaPath, isNew, updateField, updateEditField]);
+  }, [javaSelection, customJavaPath, isNew, instance, updateField, updateEditField]);
 
-  // Sync memory to VM options (both create and edit)
+  // Memory sync with infinite loop prevention
   useEffect(() => {
     const effectiveMemory = isNew
       ? formState.memory
       : editMaxMemory ?? globalSettings.globalMaxMemory;
+
+    if (lastMemoryRef.current === effectiveMemory) return;
+    lastMemoryRef.current = effectiveMemory;
+
     const currentArgs = isNew ? formState.vmOptions : editVmOptions;
     const memoryInGB = effectiveMemory / 1024;
 
@@ -235,9 +246,7 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   }, [
     isNew,
     formState.memory,
-    formState.vmOptions,
     editMaxMemory,
-    editVmOptions,
     globalSettings.globalMaxMemory,
     updateField,
     updateEditField,
@@ -285,28 +294,60 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
     [javaVersions],
   );
 
+  // FULLY TYPE-SAFE: No 'as any' cast needed
   const handleSaveClick = async () => {
     if (isNew) {
       const versionMeta = minecraftVersions.find((v) => v.id === formState.version);
       try {
-        await create(versionMeta);
-        onSave({} as any);
+        const newPath = await create(versionMeta);
+        
+        const createOptions: CreateSaveData = {
+          name: formState.name,
+          version: formState.version,
+          icon,
+          java: formState.javaPath || undefined,
+          maxMemory: formState.memory,
+          vmOptions: formState.vmOptions.split(' ').filter((v) => v.length > 0),
+          mcOptions: formState.mcOptions?.split(' ').filter((v) => v.length > 0) || [],
+          runtime: {
+            minecraft: formState.version,
+            forge: '',
+            fabricLoader: '',
+            quiltLoader: '',
+          },
+          instancePath: newPath,
+        };
+
+        if (isServerMode) {
+          createOptions.server = {
+            host: formState.host,
+            port: parseInt(formState.port, 10) || 25565,
+          };
+        }
+
+        onSave(createOptions);
       } catch (e) {
         console.error('Creation failed', e);
       }
     } else if (instance) {
       try {
+        // Only call saveEdit - JIT autosave already handled most fields
         await saveEdit();
+        
+        // Signal parent to close modal (type-safe, no cast)
+        const editSaveData: EditSaveData = { instancePath: instance.path };
+        onSave(editSaveData);
       } catch (e) {
         console.error('Edit save failed', e);
       }
-      onSave({
-        instancePath: instance.path,
-        name: editData.name,
-        version: editData.version,
-        icon: editData.icon,
-        runtime: editData.runtime,
-      } as any);
+    }
+  };
+
+  // Icon change handler that updates edit mode
+  const handleIconSelect = (newIcon: string) => {
+    setIcon(newIcon);
+    if (!isNew && instance) {
+      updateEditField('icon', newIcon);
     }
   };
 
@@ -316,8 +357,8 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   const memory = isNew
     ? formState.memory
     : editMaxMemory ?? globalSettings.globalMaxMemory;
-  const host = isNew ? formState.host : editData.host ?? '';
-  const port = isNew ? formState.port : (editData as any).port ?? '25565';
+  const host = isNew ? formState.host : editHost ?? '';
+  const port = isNew ? formState.port : editPort ?? '25565';
 
   const title = isNew ? `New ${itemTypeName}` : `Edit ${itemTypeName}`;
   const saveButtonText = isCreating ? 'Creating...' : isNew ? 'Create' : 'Save';
@@ -325,7 +366,10 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   return (
     <div className="h-full flex flex-col text-white">
       {isIconPickerOpen && (
-        <IconPickerModal onSelect={setIcon} onClose={() => setIconPickerOpen(false)} />
+        <IconPickerModal 
+          onSelect={handleIconSelect} 
+          onClose={() => setIconPickerOpen(false)} 
+        />
       )}
       <div className="flex justify-between items-center mb-6 flex-shrink-0 pr-4">
         <h1 className="font-display text-3xl font-bold uppercase tracking-wider">
