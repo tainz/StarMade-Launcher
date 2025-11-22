@@ -124,6 +124,7 @@ export interface UseInstanceEditReturn {
  * ✓ Accepts editInstance as parameter
  * ✓ No external dependencies (inline debounce)
  * ✓ Explicit TypeScript return type with host/port
+ * ✓ Fixed infinite loop in load() effect
  * 
  * @param instance - The instance to edit
  * @param editInstance - editInstance function from InstanceServiceKey
@@ -328,9 +329,10 @@ export function useInstanceEdit(
     });
   }, [instance]);
 
+  // FIXED: Remove 'load' from dependency array to prevent infinite loop
   useEffect(() => {
     load();
-  }, [instance?.path, load]);
+  }, [instance?.path]);
 
   // --- Computed Properties ---
   const assignMemory = useMemo(
@@ -483,23 +485,25 @@ export function useInstanceEdit(
   // --- Update Helpers ---
   const updateField = useCallback(
     <K extends keyof typeof data>(key: K, value: typeof data[K]) => {
-      let nextData = { ...data, [key]: value };
+      setData((currentData) => {
+        let nextData = { ...currentData, [key]: value };
 
-      // Auto-enable assignMemory when setting memory (Vue parity)
-      if (key === 'minMemory' || key === 'maxMemory') {
-        if (nextData.assignMemory !== true) {
-          nextData = { ...nextData, assignMemory: true };
+        // Auto-enable assignMemory when setting memory (Vue parity)
+        if (key === 'minMemory' || key === 'maxMemory') {
+          if (nextData.assignMemory !== true) {
+            nextData = { ...nextData, assignMemory: true };
+          }
         }
-      }
 
-      setData(nextData);
+        // Auto-trigger JIT save for editable fields
+        if (key !== 'name' && key !== 'version' && key !== 'runtime' && key !== 'icon') {
+          enqueue(nextData);
+        }
 
-      // Auto-trigger JIT save for editable fields
-      if (key !== 'name' && key !== 'version' && key !== 'runtime' && key !== 'icon') {
-        enqueue(nextData);
-      }
+        return nextData;
+      });
     },
-    [data, enqueue]
+    [enqueue]  // ✅ Only depends on enqueue
   );
 
   // --- Is Modified ---
@@ -567,3 +571,4 @@ export function useInstanceEdit(
     isModified,
   };
 }
+
