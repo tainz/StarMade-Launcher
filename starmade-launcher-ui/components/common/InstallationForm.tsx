@@ -1,55 +1,25 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  FolderIcon,
-  MonitorIcon,
-  ChevronDownIcon,
-  CloseIcon,
-  PencilIcon,
-  ServerIcon,
-} from './icons';
-import type { ManagedItem, ItemType } from '../../types';
+import React, { useEffect, useState, useMemo } from 'react';
+import { FolderIcon, MonitorIcon, ChevronDownIcon, CloseIcon, ServerIcon } from './icons';
+import type { ManagedItem } from '../../types';
 import { getIconComponent } from '../../utils/getIconComponent';
 import CustomDropdown from './CustomDropdown';
 import MemorySlider from './MemorySlider';
 import { useData } from '../../contexts/DataContext';
+import { useApp } from '../../contexts/AppContext';
 import { useInstanceCreation } from '../hooks/useInstanceCreation';
+import { useInstanceEdit } from '../hooks/useInstanceEdit';
 import { CreateInstanceOption, EditInstanceOptions } from '@xmcl/runtime-api';
 
 interface InstallationFormProps {
   item: ManagedItem;
   isNew: boolean;
-  onSave: (data: CreateInstanceOption | (EditInstanceOptions & { instancePath: string })) => void;
+  onSave: (data: CreateInstanceOption | EditInstanceOptions & { instancePath: string }) => void;
   onCancel: () => void;
   itemTypeName: string;
-  isServerMode?: boolean; // New prop to distinguish context
+  isServerMode?: boolean;
 }
 
-const FormField: React.FC<{
-  label: string;
-  htmlFor: string;
-  children: React.ReactNode;
-  className?: string;
-}> = ({ label, htmlFor, children, className }) => (
-  <div className={`flex flex-col gap-2 ${className}`}>
-    <label
-      htmlFor={htmlFor}
-      className="text-sm font-semibold text-gray-300 uppercase tracking-wider"
-    >
-      {label}
-    </label>
-    {children}
-  </div>
-);
-
-const branches: { value: ItemType; label: string }[] = [
-  { value: 'release', label: 'Release' },
-  { value: 'dev', label: 'Dev / Snapshot' },
-  { value: 'archive', label: 'Archive (Old Beta/Alpha)' },
-];
-
-const resolutions = ['1280x720', '1920x1080', '2560x1440', '3840x2160'];
-
-const availableIcons: { icon: string; name: string }[] = [
+const availableIcons = [
   { icon: 'release', name: 'Release' },
   { icon: 'dev', name: 'Dev Build' },
   { icon: 'pre', name: 'Pre-release' },
@@ -64,61 +34,6 @@ const availableIcons: { icon: string; name: string }[] = [
   { icon: 'cube', name: 'Cube' },
 ];
 
-interface IconPickerModalProps {
-  onSelect: (icon: string) => void;
-  onClose: () => void;
-}
-
-const IconPickerModal: React.FC<IconPickerModalProps> = ({
-  onSelect,
-  onClose,
-}) => {
-  return (
-    <div
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center"
-      onClick={onClose}
-    >
-      <div
-        className="bg-slate-900/90 border border-slate-700 rounded-lg shadow-xl p-6 w-full max-w-2xl relative animate-fade-in-scale"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="font-display text-2xl font-bold uppercase text-white tracking-wider">
-            Choose an Icon
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-starmade-danger/20 transition-colors"
-          >
-            <CloseIcon className="w-5 h-5 text-gray-400 hover:text-starmade-danger-light" />
-          </button>
-        </div>
-        <div className="grid grid-cols-4 gap-4">
-          {availableIcons.map(({ icon, name }) => (
-            <button
-              key={icon}
-              onClick={() => {
-                onSelect(icon);
-                onClose();
-              }}
-              className="flex flex-col items-center justify-center gap-3 p-4 bg-black/20 rounded-lg border border-white/10 hover:border-starmade-accent hover:bg-starmade-accent/10 transition-all group"
-            >
-              <div className="w-20 h-20 flex items-center justify-center">
-                {getIconComponent(icon, 'large')}
-              </div>
-              <span className="text-sm font-semibold text-gray-300 group-hover:text-white">
-                {name}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const CUSTOM_JAVA_VALUE = '__custom__';
-
 const InstallationForm: React.FC<InstallationFormProps> = ({
   item,
   isNew,
@@ -127,333 +42,266 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   itemTypeName,
   isServerMode = false,
 }) => {
-  // --- Hook Integration ---
-  const { formState, updateField, create, isCreating } = useInstanceCreation();
-  const { minecraftVersions, javaVersions } = useData();
+  // FIXED: Get editInstance and globalSettings from DataContext
+  const { minecraftVersions, javaVersions, instances, editInstance, globalSettings } = useData();
+  const { registerPreLaunchFlush, unregisterPreLaunchFlush } = useApp();
 
-  // Local UI state (things that aren't strictly "Instance Configuration" or are UI-only)
-  const [icon, setIcon] = useState(item.icon);
-  const [type, setType] = useState<ItemType>((item.type === 'latest' ? 'release' : item.type) || 'release');
-  const [resolution, setResolution] = useState('1920x1080');
-  const [showMoreOptions, setShowMoreOptions] = useState(false);
-  const [isIconPickerOpen, setIconPickerOpen] = useState(false);
-  const [javaSelection, setJavaSelection] = useState<string>('');
-  const [customJavaPath, setCustomJavaPath] = useState('');
-
-  // Initialize Form State from Item (Edit Mode) or Defaults
-  useEffect(() => {
-    updateField('name', item.name);
-    updateField('version', item.version);
-    updateField('memory', item.maxMemory ?? 4096);
-    updateField('vmOptions', item.vmOptions ?? '');
-    updateField('javaPath', item.java ?? '');
-    
-    // Initialize Server Fields
-    updateField('isServer', isServerMode);
-    if (isServerMode && !isNew) {
-        // Note: In the current ViewModel, 'port' might contain the host string due to legacy mapping.
-        // We attempt to extract meaningful data if available.
-        updateField('host', item.port || ''); 
-        updateField('port', '25565'); // Default, as actual port number might be lost in ViewModel
-    }
-
-    // Initialize Java UI helpers
-    if (!item.java) {
-      setJavaSelection('');
-      setCustomJavaPath('');
-    } else {
-      const known = javaVersions.find((j) => j.path === item.java);
-      if (known) {
-        setJavaSelection(known.path);
-        setCustomJavaPath('');
-      } else {
-        setJavaSelection(CUSTOM_JAVA_VALUE);
-        setCustomJavaPath(item.java);
-      }
-    }
-  }, [item, javaVersions, updateField, isServerMode, isNew]);
-
-  // Sync Java Selection to Form State
-  useEffect(() => {
-    if (javaSelection === CUSTOM_JAVA_VALUE) {
-      updateField('javaPath', customJavaPath);
-    } else {
-      updateField('javaPath', javaSelection);
-    }
-  }, [javaSelection, customJavaPath, updateField]);
-
-  // Sync Memory to VM Options (Vue Parity Logic)
-  useEffect(() => {
-    const memoryInGB = formState.memory / 1024;
-    const currentArgs = formState.vmOptions;
-    const otherArgs = currentArgs
-      .split(' ')
-      .filter((arg) => !arg.startsWith('-Xm'))
-      .join(' ');
-    const newArgs = `-Xms${memoryInGB}G -Xmx${memoryInGB}G ${otherArgs}`.trim();
-    
-    if (newArgs !== currentArgs) {
-        updateField('vmOptions', newArgs);
-    }
-  }, [formState.memory, updateField]);
-
-  // Filter versions based on the selected branch type
-  const versionOptions = useMemo(() => {
-    return minecraftVersions
-      .filter((v) => {
-        switch (type) {
-          case 'release':
-            return v.type === 'release';
-          case 'dev':
-          case 'pre':
-            return v.type === 'snapshot';
-          case 'archive':
-            return v.type === 'old_beta' || v.type === 'old_alpha';
-          default:
-            return v.type === 'release';
-        }
-      })
-      .map((v) => ({ value: v.id, label: v.id }));
-  }, [minecraftVersions, type]);
-
-  const javaOptions = useMemo(
-    () => [
-      { value: '', label: 'Auto (recommended)' },
-      ...javaVersions
-        .filter((j) => !!j.path)
-        .map((j) => ({
-          value: j.path!,
-          label: `${j.version || 'Unknown version'} (${j.path})`,
-        })),
-      { value: CUSTOM_JAVA_VALUE, label: 'Custom Path...' },
-    ],
-    [javaVersions],
+  const instance = useMemo(
+    () => (!isNew ? instances.find((i) => i.path === item.path) ?? null : null),
+    [isNew, instances, item.path]
   );
 
-  const handleSaveClick = async () => {
+  // --- HOOKS ---
+  const creationHook = useInstanceCreation();
+  // FIXED: Pass editInstance and globalSettings to useInstanceEdit
+  const editHook = useInstanceEdit(instance, editInstance, globalSettings);
+
+  const { formState: createFormState, updateField: updateCreateField, isCreating } = creationHook;
+  const {
+    data: editData,
+    updateField: updateEditField,
+    save: saveEdit,
+    maxMemory: editMaxMemory,
+    isModified,
+    flushNow,
+  } = editHook;
+
+  // --- LOCAL UI STATE ---
+  const [icon, setIcon] = useState(item.icon);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [isIconPickerOpen, setIconPickerOpen] = useState(false);
+
+  // --- INITIALIZATION ---
+  useEffect(() => {
     if (isNew) {
-      // Use the Hook's create function for BOTH Installations and Servers
-      const versionMeta = minecraftVersions.find(v => v.id === formState.version);
-      try {
-        // We pass the metadata so the hook can trigger the install immediately
-        await create(versionMeta);
-        
-        // Notify parent to close view. Data is irrelevant as creation is done.
-        onSave({} as any); 
-      } catch (e) {
-        console.error("Creation failed", e);
+      updateCreateField('name', item.name);
+      updateCreateField('version', item.version);
+      updateCreateField('memory', item.maxMemory ?? 4096);
+      updateCreateField('vmOptions', item.vmOptions ?? '');
+      updateCreateField('javaPath', item.java ?? '');
+
+      if (isServerMode) {
+        updateCreateField('isServer', true);
+        updateCreateField('host', item.port ?? '');
+        updateCreateField('port', '25565');
       }
-    } else {
-      // Edit Mode: Construct options manually and pass to parent
-      const editOptions: EditInstanceOptions & { instancePath: string } = {
-        instancePath: item.id,
-        name: formState.name,
-        version: formState.version,
-        icon: icon,
-        java: formState.javaPath || undefined,
-        maxMemory: formState.memory,
-        vmOptions: formState.vmOptions.split(' ').filter(v => v.length > 0),
+    }
+  }, [isNew, item, updateCreateField, isServerMode]);
+
+  // --- PRE-LAUNCH FLUSH REGISTRATION ---
+  // Register flushNow with AppContext so pending edits are saved before launch
+  useEffect(() => {
+    if (!isNew && flushNow) {
+      registerPreLaunchFlush(flushNow);
+      return () => unregisterPreLaunchFlush();
+    }
+  }, [isNew, flushNow, registerPreLaunchFlush, unregisterPreLaunchFlush]);
+
+  // --- HANDLERS ---
+  const handleSave = () => {
+    if (isNew) {
+      const versionMeta = minecraftVersions.find((v) => v.id === createFormState.version);
+      const options: CreateInstanceOption = {
+        name: createFormState.name,
+        version: createFormState.version,
+        java: createFormState.javaPath || undefined,
+        maxMemory: createFormState.memory,
+        vmOptions: createFormState.vmOptions.split(' ').filter((x) => x.length > 0),
+        mcOptions: createFormState.mcOptions.split(' ').filter((x) => x.length > 0),
         runtime: {
-            minecraft: formState.version,
-            forge: '',
-            fabricLoader: '',
-            quiltLoader: '',
-        }
+          minecraft: createFormState.version,
+          forge: '',
+          fabricLoader: '',
+          quiltLoader: '',
+        },
+        icon,
       };
 
-      // Attach Server Data if in Server Mode
       if (isServerMode) {
-          editOptions.server = {
-              host: formState.host,
-              port: parseInt(formState.port, 10) || 25565
-          };
+        options.server = {
+          host: createFormState.host,
+          port: parseInt(createFormState.port, 10) || 25565,
+        };
       }
 
-      onSave(editOptions);
+      creationHook.createVanillaInstance(options, versionMeta, []).then((newPath) => {
+        onSave({ ...options, instancePath: newPath } as any);
+      });
+    } else {
+      saveEdit().then(() => {
+        onSave({
+          name: editData.name,
+          version: editData.version,
+          runtime: editData.runtime,
+          icon: editData.icon,
+          instancePath: instance!.path,
+        } as any);
+      });
     }
   };
 
-  const title = isNew ? `New ${itemTypeName}` : `Edit ${itemTypeName}`;
-  const saveButtonText = isCreating ? 'Creating...' : (isNew ? 'Create' : 'Save');
+  // --- DERIVED STATE ---
+  const name = isNew ? createFormState.name : editData.name;
+  const version = isNew ? createFormState.version : editData.version;
+  const memory = isNew ? createFormState.memory : editMaxMemory;
+  const vmOptions = isNew ? createFormState.vmOptions : editHook.vmOptions;
+  const javaPath = isNew ? createFormState.javaPath : editData.javaPath;
 
+  const updateName = (v: string) => (isNew ? updateCreateField('name', v) : updateEditField('name', v));
+  const updateVersion = (v: string) => (isNew ? updateCreateField('version', v) : updateEditField('version', v));
+  const updateMemory = (v: number) => (isNew ? updateCreateField('memory', v) : updateEditField('maxMemory', v));
+  const updateVmOptions = (v: string) =>
+    isNew ? updateCreateField('vmOptions', v) : updateEditField('vmOptions', v);
+  const updateJavaPath = (v: string) =>
+    isNew ? updateCreateField('javaPath', v) : updateEditField('javaPath', v);
+
+  // --- RENDER ---
   return (
-    <div className="h-full flex flex-col text-white">
-      {isIconPickerOpen && (
-        <IconPickerModal
-          onSelect={setIcon}
-          onClose={() => setIconPickerOpen(false)}
+    <div className="space-y-6 pb-8">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <div className="w-24 h-24 flex items-center justify-center bg-black/20 rounded-lg border border-white/10">
+          {getIconComponent(icon, true)}
+        </div>
+        <div className="flex-1 space-y-2">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => updateName(e.target.value)}
+            placeholder={`${itemTypeName} Name`}
+            className="w-full bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-starmade-accent"
+          />
+          <button
+            onClick={() => setIconPickerOpen(true)}
+            className="text-sm text-gray-400 hover:text-white flex items-center gap-1"
+          >
+            <span>Change Icon</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Version Selection */}
+      <div className="space-y-2">
+        <label className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Version</label>
+        <CustomDropdown
+          options={minecraftVersions.map((v) => ({ value: v.id, label: `${v.id} (${v.type})` }))}
+          value={version}
+          onChange={updateVersion}
         />
+      </div>
+
+      {/* Server Host */}
+      {isServerMode && (
+        <div className="space-y-2">
+          <label className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Host</label>
+          <input
+            type="text"
+            value={isNew ? createFormState.host : editData.host}
+            onChange={(e) =>
+              isNew ? updateCreateField('host', e.target.value) : updateEditField('host', e.target.value)
+            }
+            placeholder="Server hostname or IP"
+            className="w-full bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
+          />
+        </div>
       )}
-      <div className="flex justify-between items-center mb-6 flex-shrink-0 pr-4">
-        <h1 className="font-display text-3xl font-bold uppercase tracking-wider">
-          {title}
-        </h1>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 rounded-md hover:bg-white/10 transition-colors text-sm font-semibold uppercase tracking-wider"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSaveClick}
-            disabled={isCreating}
-            className="px-6 py-2 rounded-md bg-starmade-accent hover:bg-starmade-accent-hover transition-colors text-sm font-bold uppercase tracking-wider disabled:opacity-50"
-          >
-            {saveButtonText}
-          </button>
-        </div>
+
+      {/* Memory Slider */}
+      <div className="space-y-2">
+        <label className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Memory Allocation</label>
+        <MemorySlider value={memory} onChange={updateMemory} />
       </div>
 
-      <div className="flex-grow overflow-y-auto pr-4 space-y-8">
-        <div className="flex gap-8 items-start">
-          <div className="flex flex-col items-center gap-4">
-            <button
-              onClick={() => setIconPickerOpen(true)}
-              className="w-32 h-32 bg-black/30 rounded-lg flex items-center justify-center border border-white/10 hover:border-starmade-accent/80 hover:shadow-[0_0_15px_0px_#227b8644] transition-all group cursor-pointer relative"
-            >
-              {getIconComponent(icon, 'large')}
-              <div className="absolute inset-0 bg-black/60 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 text-white">
-                <PencilIcon className="w-8 h-8" />
-                <span className="text-xs uppercase font-bold tracking-wider">
-                  Change Icon
-                </span>
-              </div>
-            </button>
-          </div>
+      {/* Java Path */}
+      <div className="space-y-2">
+        <label className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Java Executable</label>
+        <CustomDropdown
+          options={[
+            { value: '', label: 'Auto (recommended)' },
+            ...javaVersions.filter((j) => j.path).map((j) => ({ value: j.path!, label: `${j.version} - ${j.path}` })),
+          ]}
+          value={javaPath}
+          onChange={updateJavaPath}
+        />
+      </div>
 
-          <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-4">
-            <FormField label="Name" htmlFor="itemName" className="col-span-2">
-              <input
-                id="itemName"
-                type="text"
-                value={formState.name}
-                onChange={(e) => updateField('name', e.target.value)}
-                className="bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
-              />
-            </FormField>
-            
-            {/* Server Specific Fields */}
-            {isServerMode && (
-                <>
-                    <FormField label="Server Host" htmlFor="serverHost" className="col-span-1">
-                        <div className="relative">
-                            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                                <ServerIcon className="w-5 h-5 text-gray-400" />
-                            </div>
-                            <input
-                                id="serverHost"
-                                type="text"
-                                value={formState.host}
-                                onChange={(e) => updateField('host', e.target.value)}
-                                placeholder="mc.example.com"
-                                className="w-full bg-slate-900/80 border border-slate-700 rounded-md py-2 pl-10 pr-3 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
-                            />
-                        </div>
-                    </FormField>
-                    <FormField label="Port" htmlFor="serverPort" className="col-span-1">
-                        <input
-                            id="serverPort"
-                            type="number"
-                            value={formState.port}
-                            onChange={(e) => updateField('port', e.target.value)}
-                            placeholder="25565"
-                            className="bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
-                        />
-                    </FormField>
-                </>
-            )}
+      {/* More Options */}
+      <button
+        onClick={() => setShowMoreOptions(!showMoreOptions)}
+        className="flex items-center gap-2 text-sm text-gray-400 hover:text-white"
+      >
+        <ChevronDownIcon className={`w-4 h-4 transition-transform ${showMoreOptions ? 'rotate-180' : ''}`} />
+        <span>{showMoreOptions ? 'Hide' : 'Show'} Advanced Options</span>
+      </button>
 
-            <FormField label="Branch" htmlFor="itemBranch">
-              <CustomDropdown
-                options={branches}
-                value={type}
-                onChange={(v) => setType(v as ItemType)}
-              />
-            </FormField>
-            <FormField label="Version" htmlFor="itemVersion">
-              <CustomDropdown
-                options={versionOptions}
-                value={formState.version}
-                onChange={(v) => updateField('version', v)}
-              />
-            </FormField>
+      {showMoreOptions && (
+        <div className="space-y-4 pl-4 border-l-2 border-white/10">
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-gray-300 uppercase tracking-wider">JVM Arguments</label>
+            <textarea
+              value={vmOptions}
+              onChange={(e) => updateVmOptions(e.target.value)}
+              rows={2}
+              className="w-full bg-slate-900/80 border border-slate-700 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent font-mono text-sm"
+            />
           </div>
         </div>
+      )}
 
-        <div className="grid grid-cols-2 gap-x-8 gap-y-6">
-          {!isServerMode && (
-              <FormField label="Resolution" htmlFor="resolution">
-                <CustomDropdown
-                  options={resolutions.map(r => ({ value: r, label: r }))}
-                  value={resolution}
-                  onChange={setResolution}
-                  icon={<MonitorIcon className="w-5 h-5 text-gray-400" />}
-                />
-              </FormField>
-          )}
+      {/* Action Buttons */}
+      <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 rounded-md hover:bg-white/10 text-sm font-semibold uppercase tracking-wider text-gray-300 border border-white/10 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={isCreating || (!isNew && !isModified)}
+          className="px-4 py-2 rounded-md bg-starmade-accent hover:bg-starmade-accent/80 text-sm font-semibold uppercase tracking-wider text-white border border-starmade-accent/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isCreating ? 'Saving...' : 'Save'}
+        </button>
+      </div>
 
-          <div className="col-span-2">
-            <hr className="border-slate-800 my-2" />
-            <button
-              onClick={() => setShowMoreOptions(!showMoreOptions)}
-              className="w-full flex justify-between items-center p-2 rounded-md hover:bg-white/5 transition-colors"
-            >
-              <span className="text-base font-semibold text-gray-300 uppercase tracking-wider">
-                More Options
-              </span>
-              <ChevronDownIcon
-                className={`w-5 h-5 text-gray-400 transition-transform ${
-                  showMoreOptions ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
-
-            {showMoreOptions && (
-              <div className="mt-6 grid grid-cols-2 gap-x-8 gap-y-6 animate-fade-in-scale">
-                <FormField
-                  label="Java Memory Allocation"
-                  htmlFor="javaMemory"
-                  className="col-span-2"
+      {/* Icon Picker Modal */}
+      {isIconPickerOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center"
+          onClick={() => setIconPickerOpen(false)}
+        >
+          <div
+            className="bg-slate-900/90 border border-slate-700 rounded-lg shadow-xl p-6 w-full max-w-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="font-display text-2xl font-bold uppercase text-white tracking-wider">Choose an Icon</h2>
+              <button onClick={() => setIconPickerOpen(false)} className="p-1.5 rounded-md hover:bg-starmade-danger/20">
+                <CloseIcon className="w-5 h-5 text-gray-400 hover:text-starmade-danger-light" />
+              </button>
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              {availableIcons.map(({ icon: iconKey, name: iconName }) => (
+                <button
+                  key={iconKey}
+                  onClick={() => {
+                    setIcon(iconKey);
+                    if (!isNew) {
+                      updateEditField('icon', iconKey);
+                    }
+                    setIconPickerOpen(false);
+                  }}
+                  className="flex flex-col items-center justify-center gap-3 p-4 bg-black/20 rounded-lg border border-white/10 hover:border-starmade-accent hover:bg-starmade-accent/10 transition-all group"
                 >
-                  <MemorySlider 
-                    value={formState.memory} 
-                    onChange={(v) => updateField('memory', v)} 
-                  />
-                </FormField>
-
-                <FormField label="Java Executable" htmlFor="javaPath">
-                  <div className="flex flex-col gap-2">
-                    <CustomDropdown
-                      options={javaOptions}
-                      value={javaSelection}
-                      onChange={setJavaSelection}
-                      className="w-full"
-                      dropUp
-                    />
-
-                    {javaSelection === CUSTOM_JAVA_VALUE && (
-                      <div className="flex">
-                        <input
-                          id="javaPath"
-                          type="text"
-                          value={customJavaPath}
-                          onChange={(e) => setCustomJavaPath(e.target.value)}
-                          className="flex-1 bg-slate-900/80 border border-slate-700 rounded-l-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-starmade-accent"
-                          placeholder="Custom Java executable path"
-                        />
-                        <button className="bg-slate-800/80 border-t border-b border-r border-slate-700 px-4 rounded-r-md hover:bg-slate-700/80">
-                          <FolderIcon className="w-5 h-5 text-gray-400" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </FormField>
-              </div>
-            )}
+                  <div className="w-20 h-20 flex items-center justify-center">{getIconComponent(iconKey, true)}</div>
+                  <span className="text-sm font-semibold text-gray-300 group-hover:text-white">{iconName}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

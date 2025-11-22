@@ -4,169 +4,224 @@ import { useUserState } from '../components/hooks/useUserState';
 import { useInstanceServiceState } from '../components/hooks/useInstanceServiceState';
 import { useInstanceViewModel } from '../components/hooks/useInstanceViewModel';
 import { defaultInstallationData, defaultServerData } from '../data/mockData';
-import { CreateInstanceOption, EditInstanceOptions, Instance, MinecraftVersion } from '@xmcl/runtime-api';
+import {
+  CreateInstanceOption,
+  EditInstanceOptions,
+  Instance,
+  MinecraftVersion,
+} from '@xmcl/runtime-api';
 import { useJavaContext } from '../components/hooks/useJavaContext';
 import { useInstanceCreation } from '../components/hooks/useInstanceCreation';
 import { useVersionState } from '../components/hooks/useVersionState';
 import { useEnsureLatestInstance } from '../components/hooks/useEnsureLatestInstance';
 
 export interface DataContextType extends OriginalDataContextType {
-    loginMicrosoft: () => Promise<any>;
-    logout: () => Promise<void>;
-    userLoading: boolean;
-    userError: string | null;
-    selectedInstance: Instance | null;
-    selectInstance: (path: string) => void;
-    // Updated signatures
-    addInstallation: (options: CreateInstanceOption) => void;
-    updateInstallation: (options: EditInstanceOptions & { instancePath: string }) => void;
-    addServer: (options: CreateInstanceOption) => void;
-    updateServer: (options: EditInstanceOptions & { instancePath: string }) => void;
+  loginMicrosoft: () => Promise<any>;
+  logout: () => Promise<void>;
+  userLoading: boolean;
+  userError: string | null;
+  selectedInstance: Instance | null;
+  selectInstance: (path: string) => void;
+  // Updated signatures
+  addInstallation: (options: CreateInstanceOption) => void;
+  updateInstallation: (options: EditInstanceOptions & { instancePath: string }) => void;
+  addServer: (options: CreateInstanceOption) => void;
+  updateServer: (options: EditInstanceOptions & { instancePath: string }) => void;
+  // NEW: raw instances list for edit flows
+  instances: Instance[];
+  // NEW: expose editInstance and globalSettings for useInstanceEdit
+  editInstance: (options: EditInstanceOptions & { instancePath: string }) => Promise<void>;
+  globalSettings: {
+    globalMaxMemory: number;
+    globalMinMemory: number;
+    globalVmOptions: string[];
+    globalMcOptions: string[];
+    globalAssignMemory: boolean;
+    globalFastLaunch: boolean;
+    globalHideLauncher: boolean;
+    globalShowLog: boolean;
+    globalDisableAuthlibInjector: boolean;
+    globalDisableElyByAuthlib: boolean;
+    globalPrependCommand: string;
+    globalPreExecuteCommand: string;
+    globalResolution: { width: number; height: number } | undefined;
+  };
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    // 1. User State
-    const { 
-        users, 
-        activeUser, 
-        selectUser, 
-        loginMicrosoft, 
-        logout, 
-        loading: userLoading, 
-        error: userError 
-    } = useUserState();
+  // 1. User State
+  const {
+    users,
+    activeUser,
+    selectUser,
+    loginMicrosoft,
+    logout,
+    loading: userLoading,
+    error: userError,
+  } = useUserState();
 
-    // 2. Instance State (Raw Data & Actions)
-    const {
-        instances, 
-        selectedInstance,
-        addInstance: createInstanceRaw,
-        editInstance,
-        deleteInstance,
-        selectInstance,
-        isInitialized, // Get initialization state
-    } = useInstanceServiceState();
+  // 2. Instance State (Raw Data & Actions)
+  const {
+    instances,
+    selectedInstance,
+    addInstance: createInstanceRaw,
+    editInstance,
+    deleteInstance,
+    selectInstance,
+    isInitialized,
+  } = useInstanceServiceState();
 
-    // 3. Instance View Model (Derived UI Data)
-    // This ensures installations and servers are derived from the same state source
-    // and automatically update when properties (like server host) change.
-    const { installations, servers } = useInstanceViewModel(instances);
+  // 3. Instance View Model
+  const { installations, servers } = useInstanceViewModel(instances);
 
-    // 4. Version State
-    const { 
-        minecraftVersions, 
-        versions,
-        selectedVersion,
-        setSelectedVersion
-    } = useVersionState();
+  // 4. Version State
+  const { minecraftVersions, versions, selectedVersion, setSelectedVersion } = useVersionState();
 
-    // 5. Java State
-    const { 
-        all: javaVersions, 
-        missing: javaIsMissing, 
-        refresh: refreshJava 
-    } = useJavaContext();
+  // 5. Java State
+  const { all: javaVersions, missing: javaIsMissing, refresh: refreshJava } = useJavaContext();
 
-    // 6. Installation Services
-    const { createVanillaInstance } = useInstanceCreation();
+  // 6. Installation Services
+  const { createVanillaInstance } = useInstanceCreation();
 
-    // --- Business Logic: Ensure "Latest Version" instance exists ---
-    // Pass isInitialized to prevent race conditions
-    useEnsureLatestInstance(instances, minecraftVersions, createVanillaInstance, editInstance, isInitialized);
+  // 7. Global Settings (stub for now)
+  const globalSettings = {
+    globalMaxMemory: 4096,
+    globalMinMemory: 1024,
+    globalVmOptions: [] as string[],
+    globalMcOptions: [] as string[],
+    globalAssignMemory: false,
+    globalFastLaunch: false,
+    globalHideLauncher: true,
+    globalShowLog: false,
+    globalDisableAuthlibInjector: false,
+    globalDisableElyByAuthlib: false,
+    globalPrependCommand: '',
+    globalPreExecuteCommand: '',
+    globalResolution: undefined as { width: number; height: number } | undefined,
+  };
 
-    // --- Orchestration Actions ---
+  // Ensure "Latest Version" instance exists
+  useEnsureLatestInstance(
+    instances,
+    minecraftVersions,
+    createVanillaInstance,
+    editInstance,
+    isInitialized,
+  );
 
-    const addInstallation = useCallback(async (options: CreateInstanceOption) => {
-        const versionMeta = minecraftVersions.find(v => v.id === options.version);
-        try {
-            await createVanillaInstance(options, versionMeta);
-        } catch (e) {
-            console.error("Failed during instance creation:", e);
-        }
-    }, [createVanillaInstance, minecraftVersions]);
+  const addInstallation = useCallback(
+    async (options: CreateInstanceOption) => {
+      const versionMeta = minecraftVersions.find((v) => v.id === options.version);
+      try {
+        await createVanillaInstance(options, versionMeta);
+      } catch (e) {
+        console.error('Failed during instance creation:', e);
+      }
+    },
+    [createVanillaInstance, minecraftVersions],
+  );
 
-    const updateInstallation = useCallback((options: EditInstanceOptions & { instancePath: string }) => {
-        editInstance(options);
-    }, [editInstance]);
+  const updateInstallation = useCallback(
+    (options: EditInstanceOptions & { instancePath: string }) => {
+      editInstance(options);
+    },
+    [editInstance],
+  );
 
-    const deleteInstallation = useCallback((id: string) => deleteInstance(id), [deleteInstance]);
-    
-    // Standardized Server Creation:
-    // A "Server" in this context is a Local Dedicated Server, which requires the same
-    // file installation logic as a client instance. We use createVanillaInstance here too.
-    const addServer = useCallback(async (options: CreateInstanceOption) => {
-        const versionMeta = minecraftVersions.find(v => v.id === options.version);
-        try {
-            await createVanillaInstance(options, versionMeta);
-        } catch (e) {
-            console.error("Failed during server creation:", e);
-        }
-    }, [createVanillaInstance, minecraftVersions]);
+  const deleteInstallation = useCallback(
+    (id: string) => deleteInstance(id),
+    [deleteInstance],
+  );
 
-    const updateServer = useCallback((options: EditInstanceOptions & { instancePath: string }) => {
-        editInstance(options);
-    }, [editInstance]);
+  const addServer = useCallback(
+    async (options: CreateInstanceOption) => {
+      const versionMeta = minecraftVersions.find((v) => v.id === options.version);
+      try {
+        await createVanillaInstance(options, versionMeta);
+      } catch (e) {
+        console.error('Failed during server creation:', e);
+      }
+    },
+    [createVanillaInstance, minecraftVersions],
+  );
 
-    const deleteServer = useCallback((id: string) => deleteInstance(id), [deleteInstance]);
+  const updateServer = useCallback(
+    (options: EditInstanceOptions & { instancePath: string }) => {
+      editInstance(options);
+    },
+    [editInstance],
+  );
 
-    const getInstallationDefaults = useCallback(
-        () => ({ 
-            ...defaultInstallationData, 
-            // Default to the first release version found, or fallback
-            version: minecraftVersions.find(v => v.type === 'release')?.id || defaultInstallationData.version,
-            id: Date.now().toString(),
-        }),
-        [minecraftVersions],
-    );
+  const deleteServer = useCallback(
+    (id: string) => deleteInstance(id),
+    [deleteInstance],
+  );
 
-    const getServerDefaults = useCallback(
-        () => ({ 
-            ...defaultServerData, 
-            // FIX: Use dynamic version logic identical to installations
-            version: minecraftVersions.find(v => v.type === 'release')?.id || defaultServerData.version,
-            id: Date.now().toString() 
-        }),
-        [minecraftVersions],
-    );
-    
-    const value: DataContextType = {
-        accounts: users,
-        activeAccount: activeUser,
-        setActiveAccount: selectUser,
-        loginMicrosoft,
-        logout,
-        userLoading,
-        userError,
-        installations,
-        servers,
-        selectedInstance,
-        selectInstance,
-        addInstallation,
-        updateInstallation,
-        deleteInstallation,
-        addServer,
-        updateServer,
-        deleteServer,
-        getInstallationDefaults,
-        getServerDefaults,
-        versions,
-        minecraftVersions,
-        selectedVersion,
-        setSelectedVersion,
-        javaVersions,
-        javaIsMissing,
-        refreshJava,
-    };
+  const getInstallationDefaults = useCallback(
+    () => ({
+      ...defaultInstallationData,
+      version:
+        minecraftVersions.find((v) => v.type === 'release')?.id ||
+        defaultInstallationData.version,
+      id: Date.now().toString(),
+    }),
+    [minecraftVersions],
+  );
 
-    return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+  const getServerDefaults = useCallback(
+    () => ({
+      ...defaultServerData,
+      version:
+        minecraftVersions.find((v) => v.type === 'release')?.id ||
+        defaultServerData.version,
+      id: Date.now().toString(),
+    }),
+    [minecraftVersions],
+  );
+
+  const value: DataContextType = {
+    accounts: users,
+    activeAccount: activeUser,
+    setActiveAccount: selectUser,
+    loginMicrosoft,
+    logout,
+    userLoading,
+    userError,
+    installations,
+    servers,
+    selectedInstance,
+    selectInstance,
+    addInstallation,
+    updateInstallation,
+    deleteInstallation,
+    addServer,
+    updateServer,
+    deleteServer,
+    getInstallationDefaults,
+    getServerDefaults,
+    versions,
+    minecraftVersions,
+    selectedVersion,
+    setSelectedVersion,
+    javaVersions,
+    javaIsMissing,
+    refreshJava,
+    // NEW: raw instances + edit + global settings
+    instances,
+    editInstance,
+    globalSettings,
+  };
+
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 };
 
 export const useData = (): DataContextType => {
-    const context = useContext(DataContext);
-    if (context === undefined) {
-        throw new Error('useData must be used within a DataProvider');
-    }
-    return context;
+  const context = useContext(DataContext);
+  if (context === undefined) {
+    throw new Error('useData must be used within a DataProvider');
+  }
+  return context;
 };
+
