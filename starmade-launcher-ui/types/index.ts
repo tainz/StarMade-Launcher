@@ -32,15 +32,13 @@ export interface Version {
 }
 
 export type Page = 'Play' | 'Installations' | 'News' | 'Settings';
-
 export type SettingsSection = 'launcher' | 'accounts' | 'about' | 'defaults';
-
 export type InstallationsTab = 'installations' | 'servers';
 
-export type PageProps = {
+export interface PageProps {
   initialSection?: SettingsSection;
   initialTab?: InstallationsTab;
-};
+}
 
 // Context Types
 export interface AppContextType {
@@ -54,13 +52,9 @@ export interface AppContextType {
   closeLaunchModal: () => void;
   startLaunching: () => void;
   completeLaunching: () => void;
-  gameExitError: {
-    code: number;
-    crashReport?: string;
-    crashReportLocation?: string;
-    errorLog?: string;
-  } | null;
+  gameExitError: { code: number; crashReport?: string; crashReportLocation?: string; errorLog?: string } | null;
   clearGameExitError: () => void;
+  
   // Task manager properties
   tasks: TaskItem[];
   pauseTask: (task: TaskItem) => void;
@@ -75,11 +69,11 @@ export interface DataContextType {
   installations: ManagedItem[];
   servers: ManagedItem[];
   versions: Version[];
-  minecraftVersions: MinecraftVersion[]; // Added for live Minecraft version data
+  minecraftVersions: MinecraftVersion[];
   selectedVersion: Version | null;
   userLoading: boolean;
   userError: string | null;
-  selectedInstance: any | null; // Replace 'any' with Instance type from xmcl-runtime-api
+  selectedInstance: any | null;
   
   // Actions
   setActiveAccount: (account: Account) => void;

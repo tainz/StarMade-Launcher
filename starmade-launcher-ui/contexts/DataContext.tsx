@@ -1,6 +1,7 @@
 import React, { createContext, useContext, ReactNode, useCallback } from 'react';
 import type { DataContextType as OriginalDataContextType, ManagedItem } from '../types';
 import { useUserState } from '../components/hooks/useUserState';
+import { useLogin } from '../components/hooks/useLogin';
 import { useInstanceServiceState } from '../components/hooks/useInstanceServiceState';
 import { useInstanceViewModel } from '../components/hooks/useInstanceViewModel';
 import { defaultInstallationData, defaultServerData } from '../data/mockData';
@@ -15,20 +16,33 @@ import { useInstanceCreation } from '../components/hooks/useInstanceCreation';
 import { useVersionState } from '../components/hooks/useVersionState';
 import { useEnsureLatestInstance } from '../components/hooks/useEnsureLatestInstance';
 
+/**
+ * Extended DataContext type with separated user state + auth actions
+ */
 export interface DataContextType extends OriginalDataContextType {
-  loginMicrosoft: () => Promise<any>;
-  logout: () => Promise<void>;
+  // User state (read-only)
   userLoading: boolean;
   userError: string | null;
+  
+  // Auth actions + loading (from useLogin)
+  loginMicrosoft: () => Promise<any>;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;  // NEW: exposed for useUserDiagnose
+  authLoading: boolean;  // NEW: separate from initial state load
+  authError: string | null;  // NEW: separate from initial state load
+  
   selectedInstance: Instance | null;
   selectInstance: (path: string) => void;
+  
   // Updated signatures
   addInstallation: (options: CreateInstanceOption) => void;
   updateInstallation: (options: EditInstanceOptions & { instancePath: string }) => void;
   addServer: (options: CreateInstanceOption) => void;
   updateServer: (options: EditInstanceOptions & { instancePath: string }) => void;
+  
   // NEW: raw instances list for edit flows
   instances: Instance[];
+  
   // NEW: expose editInstance and globalSettings for useInstanceEdit
   editInstance: (options: EditInstanceOptions & { instancePath: string }) => Promise<void>;
   globalSettings: {
@@ -51,18 +65,25 @@ export interface DataContextType extends OriginalDataContextType {
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // 1. User State
-  const {
-    users,
-    activeUser,
+  // 1. User State (state only)
+  const { 
+    users, 
+    activeUser, 
     selectUser,
-    loginMicrosoft,
-    logout,
     loading: userLoading,
-    error: userError,
+    error: userError 
   } = useUserState();
-
-  // 2. Instance State (Raw Data & Actions)
+  
+  // 2. User Actions (auth only, with dependency injection)
+  const { 
+    loginMicrosoft, 
+    logout, 
+    refreshUser,
+    loading: authLoading,
+    error: authError 
+  } = useLogin({ activeUser, selectUser });
+  
+  // 3. Instance State (Raw Data + Actions)
   const {
     instances,
     selectedInstance,
@@ -72,20 +93,29 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     selectInstance,
     isInitialized,
   } = useInstanceServiceState();
-
-  // 3. Instance View Model
+  
+  // 4. Instance View Model
   const { installations, servers } = useInstanceViewModel(instances);
-
-  // 4. Version State
-  const { minecraftVersions, versions, selectedVersion, setSelectedVersion } = useVersionState();
-
-  // 5. Java State
-  const { all: javaVersions, missing: javaIsMissing, refresh: refreshJava } = useJavaContext();
-
-  // 6. Installation Services
+  
+  // 5. Version State
+  const {
+    minecraftVersions,
+    versions,
+    selectedVersion,
+    setSelectedVersion
+  } = useVersionState();
+  
+  // 6. Java State
+  const {
+    all: javaVersions,
+    missing: javaIsMissing,
+    refresh: refreshJava
+  } = useJavaContext();
+  
+  // 7. Installation Services
   const { createVanillaInstance } = useInstanceCreation();
-
-  // 7. Global Settings (stub for now)
+  
+  // 8. Global Settings (stub for now)
   const globalSettings = {
     globalMaxMemory: 4096,
     globalMinMemory: 1024,
@@ -101,8 +131,8 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     globalPreExecuteCommand: '',
     globalResolution: undefined as { width: number; height: number } | undefined,
   };
-
-  // Ensure "Latest Version" instance exists
+  
+  // Ensure Latest Version instance exists
   useEnsureLatestInstance(
     instances,
     minecraftVersions,
@@ -110,85 +140,68 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     editInstance,
     isInitialized,
   );
-
-  const addInstallation = useCallback(
-    async (options: CreateInstanceOption) => {
-      const versionMeta = minecraftVersions.find((v) => v.id === options.version);
-      try {
-        await createVanillaInstance(options, versionMeta);
-      } catch (e) {
-        console.error('Failed during instance creation:', e);
-      }
-    },
-    [createVanillaInstance, minecraftVersions],
-  );
-
-  const updateInstallation = useCallback(
-    (options: EditInstanceOptions & { instancePath: string }) => {
-      editInstance(options);
-    },
-    [editInstance],
-  );
-
-  const deleteInstallation = useCallback(
-    (id: string) => deleteInstance(id),
-    [deleteInstance],
-  );
-
-  const addServer = useCallback(
-    async (options: CreateInstanceOption) => {
-      const versionMeta = minecraftVersions.find((v) => v.id === options.version);
-      try {
-        await createVanillaInstance(options, versionMeta);
-      } catch (e) {
-        console.error('Failed during server creation:', e);
-      }
-    },
-    [createVanillaInstance, minecraftVersions],
-  );
-
-  const updateServer = useCallback(
-    (options: EditInstanceOptions & { instancePath: string }) => {
-      editInstance(options);
-    },
-    [editInstance],
-  );
-
-  const deleteServer = useCallback(
-    (id: string) => deleteInstance(id),
-    [deleteInstance],
-  );
-
-  const getInstallationDefaults = useCallback(
-    () => ({
-      ...defaultInstallationData,
-      version:
-        minecraftVersions.find((v) => v.type === 'release')?.id ||
-        defaultInstallationData.version,
-      id: Date.now().toString(),
-    }),
-    [minecraftVersions],
-  );
-
-  const getServerDefaults = useCallback(
-    () => ({
-      ...defaultServerData,
-      version:
-        minecraftVersions.find((v) => v.type === 'release')?.id ||
-        defaultServerData.version,
-      id: Date.now().toString(),
-    }),
-    [minecraftVersions],
-  );
-
+  
+  const addInstallation = useCallback(async (options: CreateInstanceOption) => {
+    const versionMeta = minecraftVersions.find((v) => v.id === options.version);
+    try {
+      await createVanillaInstance(options, versionMeta);
+    } catch (e) {
+      console.error('Failed during instance creation', e);
+    }
+  }, [createVanillaInstance, minecraftVersions]);
+  
+  const updateInstallation = useCallback((options: EditInstanceOptions & { instancePath: string }) => {
+    editInstance(options);
+  }, [editInstance]);
+  
+  const deleteInstallation = useCallback((id: string) => {
+    deleteInstance(id);
+  }, [deleteInstance]);
+  
+  const addServer = useCallback(async (options: CreateInstanceOption) => {
+    const versionMeta = minecraftVersions.find((v) => v.id === options.version);
+    try {
+      await createVanillaInstance(options, versionMeta);
+    } catch (e) {
+      console.error('Failed during server creation', e);
+    }
+  }, [createVanillaInstance, minecraftVersions]);
+  
+  const updateServer = useCallback((options: EditInstanceOptions & { instancePath: string }) => {
+    editInstance(options);
+  }, [editInstance]);
+  
+  const deleteServer = useCallback((id: string) => {
+    deleteInstance(id);
+  }, [deleteInstance]);
+  
+  const getInstallationDefaults = useCallback((): ManagedItem => ({
+    ...defaultInstallationData,
+    version: minecraftVersions.find((v) => v.type === 'release')?.id || defaultInstallationData.version,
+    id: Date.now().toString(),
+  }), [minecraftVersions]);
+  
+  const getServerDefaults = useCallback((): ManagedItem => ({
+    ...defaultServerData,
+    version: minecraftVersions.find((v) => v.type === 'release')?.id || defaultServerData.version,
+    id: Date.now().toString(),
+  }), [minecraftVersions]);
+  
   const value: DataContextType = {
+    // User state (read)
     accounts: users,
     activeAccount: activeUser,
     setActiveAccount: selectUser,
-    loginMicrosoft,
-    logout,
     userLoading,
     userError,
+    
+    // User actions (write)
+    loginMicrosoft,
+    logout,
+    refreshUser,  // NEW: exposed for useUserDiagnose
+    authLoading,  // NEW: separate from initial load
+    authError,    // NEW: separate from initial load
+    
     installations,
     servers,
     selectedInstance,
@@ -208,12 +221,13 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     javaVersions,
     javaIsMissing,
     refreshJava,
-    // NEW: raw instances + edit + global settings
+    
+    // NEW: raw instances, edit function, and global settings
     instances,
     editInstance,
     globalSettings,
   };
-
+  
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 };
 
@@ -224,4 +238,3 @@ export const useData = (): DataContextType => {
   }
   return context;
 };
-
