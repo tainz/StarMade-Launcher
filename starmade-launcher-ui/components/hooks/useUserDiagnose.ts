@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { UserProfile } from '@xmcl/runtime-api';
 import { useData } from '../../contexts/DataContext';
 
 export interface UserIssue {
@@ -11,11 +10,11 @@ export interface UserIssue {
 /**
  * Hook to diagnose user account issues (missing or expired session).
  * 
- * REFACTORED: Now uses refreshUser from DataContext (which gets it from useLogin).
- * No longer directly imports useLogin to avoid duplicate subscriptions.
+ * REFACTORED: Now uses refreshUser + loginMicrosoft from DataContext.
+ * Handles both missing accounts and expired sessions correctly.
  */
 export function useUserDiagnose() {
-  const { activeAccount, refreshUser } = useData();
+  const { activeAccount, loginMicrosoft, refreshUser } = useData();
   
   const issue = useMemo<UserIssue | undefined>(() => {
     if (!activeAccount) {
@@ -38,13 +37,30 @@ export function useUserDiagnose() {
     return undefined;
   }, [activeAccount]);
   
+  /**
+   * Fixes the detected user issue:
+   * - missing: triggers login flow
+   * - expired: attempts refresh, falls back to login if refresh fails
+   */
   const fix = async () => {
     if (!issue) return;
     
-    if (issue.type === 'expired' && activeAccount) {
-      await refreshUser();
+    if (issue.type === 'missing') {
+      // No account at all - trigger login
+      await loginMicrosoft();
+      return;
     }
-    // For 'missing' type, caller should handle login flow separately
+    
+    if (issue.type === 'expired' && activeAccount) {
+      // Account exists but token expired - try refresh first
+      try {
+        await refreshUser();
+      } catch (e) {
+        console.error('[useUserDiagnose] Refresh failed, falling back to login:', e);
+        // Refresh failed - fall back to full re-login
+        await loginMicrosoft();
+      }
+    }
   };
   
   return { issue, fix };

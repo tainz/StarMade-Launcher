@@ -5,7 +5,7 @@ import {
   LoginOptions,
   AUTHORITY_MICROSOFT,
   AUTHORITY_MOJANG,
-  AUTHORITY_OFFLINE,
+  AUTHORITY_DEV,
   UserException,
   isException
 } from '@xmcl/runtime-api';
@@ -106,7 +106,7 @@ export function useLogin({ activeUser, selectUser }: UseLoginParams): UseLoginRe
   
   const loginOffline = useCallback((username: string) => loginCustom({
     username,
-    authority: AUTHORITY_OFFLINE,
+    authority: AUTHORITY_DEV,
   }), [loginCustom]);
   
   const logout = useCallback(async () => {

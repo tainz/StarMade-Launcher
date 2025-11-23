@@ -1,5 +1,5 @@
 import React, { createContext, useContext, ReactNode, useCallback } from 'react';
-import type { DataContextType as OriginalDataContextType, ManagedItem } from '../types';
+import type { DataContextType, ManagedItem } from '../types';
 import { useUserState } from '../components/hooks/useUserState';
 import { useLogin } from '../components/hooks/useLogin';
 import { useInstanceServiceState } from '../components/hooks/useInstanceServiceState';
@@ -15,52 +15,6 @@ import { useJavaContext } from '../components/hooks/useJavaContext';
 import { useInstanceCreation } from '../components/hooks/useInstanceCreation';
 import { useVersionState } from '../components/hooks/useVersionState';
 import { useEnsureLatestInstance } from '../components/hooks/useEnsureLatestInstance';
-
-/**
- * Extended DataContext type with separated user state + auth actions
- */
-export interface DataContextType extends OriginalDataContextType {
-  // User state (read-only)
-  userLoading: boolean;
-  userError: string | null;
-  
-  // Auth actions + loading (from useLogin)
-  loginMicrosoft: () => Promise<any>;
-  logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;  // NEW: exposed for useUserDiagnose
-  authLoading: boolean;  // NEW: separate from initial state load
-  authError: string | null;  // NEW: separate from initial state load
-  
-  selectedInstance: Instance | null;
-  selectInstance: (path: string) => void;
-  
-  // Updated signatures
-  addInstallation: (options: CreateInstanceOption) => void;
-  updateInstallation: (options: EditInstanceOptions & { instancePath: string }) => void;
-  addServer: (options: CreateInstanceOption) => void;
-  updateServer: (options: EditInstanceOptions & { instancePath: string }) => void;
-  
-  // NEW: raw instances list for edit flows
-  instances: Instance[];
-  
-  // NEW: expose editInstance and globalSettings for useInstanceEdit
-  editInstance: (options: EditInstanceOptions & { instancePath: string }) => Promise<void>;
-  globalSettings: {
-    globalMaxMemory: number;
-    globalMinMemory: number;
-    globalVmOptions: string[];
-    globalMcOptions: string[];
-    globalAssignMemory: boolean;
-    globalFastLaunch: boolean;
-    globalHideLauncher: boolean;
-    globalShowLog: boolean;
-    globalDisableAuthlibInjector: boolean;
-    globalDisableElyByAuthlib: boolean;
-    globalPrependCommand: string;
-    globalPreExecuteCommand: string;
-    globalResolution: { width: number; height: number } | undefined;
-  };
-}
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -187,6 +141,7 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     id: Date.now().toString(),
   }), [minecraftVersions]);
   
+  // Build value object conforming to DataContextType
   const value: DataContextType = {
     // User state (read)
     accounts: users,
@@ -198,13 +153,17 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // User actions (write)
     loginMicrosoft,
     logout,
-    refreshUser,  // NEW: exposed for useUserDiagnose
-    authLoading,  // NEW: separate from initial load
-    authError,    // NEW: separate from initial load
+    refreshUser,
+    authLoading,
+    authError,
     
+    // Instance state
     installations,
     servers,
     selectedInstance,
+    instances,
+    
+    // Instance actions
     selectInstance,
     addInstallation,
     updateInstallation,
@@ -214,17 +173,20 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     deleteServer,
     getInstallationDefaults,
     getServerDefaults,
+    editInstance,
+    
+    // Version state
     versions,
     minecraftVersions,
     selectedVersion,
     setSelectedVersion,
+    
+    // Java state
     javaVersions,
     javaIsMissing,
     refreshJava,
     
-    // NEW: raw instances, edit function, and global settings
-    instances,
-    editInstance,
+    // Global settings
     globalSettings,
   };
   
