@@ -17,7 +17,7 @@ import { useInstanceCreation } from '../hooks/useInstanceCreation';
 import { useInstanceEdit } from '../hooks/useInstanceEdit';
 import { CreateInstanceOption, EditInstanceOptions } from '@xmcl/runtime-api';
 
-// OPTION 1: Discriminated union types for save data
+// Discriminated union types for save data
 type CreateSaveData = CreateInstanceOption & { instancePath: string };
 type EditSaveData = { instancePath: string };
 type SaveData = CreateSaveData | EditSaveData;
@@ -25,7 +25,7 @@ type SaveData = CreateSaveData | EditSaveData;
 interface InstallationFormProps {
   item: ManagedItem;
   isNew: boolean;
-  onSave: (data: SaveData) => void;  // Type-safe, no 'as any' needed
+  onSave: (data: SaveData) => void;
   onCancel: () => void;
   itemTypeName: string;
   isServerMode?: boolean;
@@ -173,6 +173,7 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   const [customJavaPath, setCustomJavaPath] = useState('');
 
   const lastMemoryRef = useRef<number | undefined>(undefined);
+  const isInitializedRef = useRef(false);
 
   // Initialize form state for create + edit
   useEffect(() => {
@@ -219,11 +220,20 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   }, [javaSelection, customJavaPath, isNew, instance, updateField, updateEditField]);
 
   // Memory sync with infinite loop prevention
+  // FIXED: Track initialization to prevent syncing on load
   useEffect(() => {
     const effectiveMemory = isNew
       ? formState.memory
       : editMaxMemory ?? globalSettings.globalMaxMemory;
 
+    // Skip on initial load - only sync when user changes memory
+    if (!isInitializedRef.current) {
+      isInitializedRef.current = true;
+      lastMemoryRef.current = effectiveMemory;
+      return;
+    }
+
+    // Only update if memory actually changed
     if (lastMemoryRef.current === effectiveMemory) return;
     lastMemoryRef.current = effectiveMemory;
 
@@ -294,7 +304,6 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
     [javaVersions],
   );
 
-  // FULLY TYPE-SAFE: No 'as any' cast needed
   const handleSaveClick = async () => {
     if (isNew) {
       const versionMeta = minecraftVersions.find((v) => v.id === formState.version);
@@ -331,10 +340,7 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
       }
     } else if (instance) {
       try {
-        // Only call saveEdit - JIT autosave already handled most fields
         await saveEdit();
-        
-        // Signal parent to close modal (type-safe, no cast)
         const editSaveData: EditSaveData = { instancePath: instance.path };
         onSave(editSaveData);
       } catch (e) {
@@ -343,7 +349,6 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
     }
   };
 
-  // Icon change handler that updates edit mode
   const handleIconSelect = (newIcon: string) => {
     setIcon(newIcon);
     if (!isNew && instance) {

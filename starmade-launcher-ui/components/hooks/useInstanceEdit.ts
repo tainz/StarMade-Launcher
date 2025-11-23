@@ -125,6 +125,8 @@ export interface UseInstanceEditReturn {
  * ✓ No external dependencies (inline debounce)
  * ✓ Explicit TypeScript return type with host/port
  * ✓ Fixed infinite loop in load() effect
+ * ✓ Fixed infinite loop in updateField
+ * ✓ Added change detection to prevent empty saves
  * 
  * @param instance - The instance to edit
  * @param editInstance - editInstance function from InstanceServiceKey
@@ -239,6 +241,35 @@ export function useInstanceEdit(
         };
       }
 
+      // ADDED: Check if payload has any actual changes before enqueueing
+      const hasChanges = Object.entries(payload).some(([key, value]) => {
+        if (key === 'server' && instance.server) {
+          return (
+            payload.server?.host !== instance.server.host ||
+            payload.server?.port !== instance.server.port
+          );
+        }
+        
+        // Compare arrays by content, not reference
+        if (Array.isArray(value)) {
+          const instanceValue = instance[key as keyof Instance];
+          if (!Array.isArray(instanceValue)) return true;
+          return JSON.stringify(value) !== JSON.stringify(instanceValue);
+        }
+        
+        // Compare primitives and objects
+        const instanceValue = instance[key as keyof Instance];
+        if (typeof value === 'object' && value !== null && !(value instanceof Array)) {
+          return JSON.stringify(value) !== JSON.stringify(instanceValue);
+        }
+        return value !== instanceValue;
+      });
+
+      // Only enqueue if there are actual changes
+      if (!hasChanges) {
+        return;
+      }
+
       if (!buffer.current || buffer.current.instancePath !== instancePath) {
         buffer.current = { ...payload, instancePath };
       } else {
@@ -329,7 +360,6 @@ export function useInstanceEdit(
     });
   }, [instance]);
 
-  // FIXED: Remove 'load' from dependency array to prevent infinite loop
   useEffect(() => {
     load();
   }, [instance?.path]);
@@ -503,7 +533,7 @@ export function useInstanceEdit(
         return nextData;
       });
     },
-    [enqueue]  // ✅ Only depends on enqueue
+    [enqueue]
   );
 
   // --- Is Modified ---
@@ -571,4 +601,3 @@ export function useInstanceEdit(
     isModified,
   };
 }
-
