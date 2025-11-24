@@ -15,6 +15,7 @@ import { useData } from '../../contexts/DataContext';
 import { useApp } from '../../contexts/AppContext';
 import { useInstanceCreation } from '../hooks/useInstanceCreation';
 import { useInstanceEdit } from '../hooks/useInstanceEdit';
+import { useLocalVersions } from '../hooks/useLocalVersions'; // NEW (Phase 1.4)
 import { CreateInstanceOption, EditInstanceOptions } from '@xmcl/runtime-api';
 
 // Discriminated union types for save data
@@ -139,6 +140,14 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
     globalSettings,
   } = useData();
   const { registerPreLaunchFlush, unregisterPreLaunchFlush } = useApp();
+
+  // NEW (Phase 1.4): Fetch local versions using dedicated hook
+  const {
+    versions: localVersions,
+    servers: localServers,
+    loading: loadingLocal,
+    error: localError,
+  } = useLocalVersions();
 
   const instance = useMemo(
     () => (!isNew ? instances.find((i) => i.path === item.path) ?? null : null),
@@ -270,25 +279,32 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
     }
   }, [isNew, flushNow, registerPreLaunchFlush, unregisterPreLaunchFlush]);
 
-  const versionOptions = useMemo(
-    () =>
-      minecraftVersions
-        .filter((v) => {
-          switch (type) {
-            case 'release':
-              return v.type === 'release';
-            case 'dev':
-            case 'pre':
-              return v.type === 'snapshot';
-            case 'archive':
-              return v.type === 'old_beta' || v.type === 'old_alpha';
-            default:
-              return v.type === 'release';
-          }
-        })
-        .map((v) => ({ value: v.id, label: v.id })),
-    [minecraftVersions, type],
-  );
+  // NEW (Phase 1.4): Build version options with local version indicator
+  const versionOptions = useMemo(() => {
+    const localVersionIds = new Set(localVersions.map((v) => v.id));
+
+    return minecraftVersions
+      .filter((v) => {
+        switch (type) {
+          case 'release':
+            return v.type === 'release';
+          case 'dev':
+          case 'pre':
+            return v.type === 'snapshot';
+          case 'archive':
+            return v.type === 'old_beta' || v.type === 'old_alpha';
+          default:
+            return v.type === 'release';
+        }
+      })
+      .map((v) => {
+        const isLocal = localVersionIds.has(v.id);
+        return {
+          value: v.id,
+          label: isLocal ? `${v.id} (installed)` : v.id,
+        };
+      });
+  }, [minecraftVersions, localVersions, type]);
 
   const javaOptions = useMemo(
     () => [
@@ -309,7 +325,7 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
       const versionMeta = minecraftVersions.find((v) => v.id === formState.version);
       try {
         const newPath = await create(versionMeta);
-        
+
         const createOptions: CreateSaveData = {
           name: formState.name,
           version: formState.version,
@@ -371,9 +387,9 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   return (
     <div className="h-full flex flex-col text-white">
       {isIconPickerOpen && (
-        <IconPickerModal 
-          onSelect={handleIconSelect} 
-          onClose={() => setIconPickerOpen(false)} 
+        <IconPickerModal
+          onSelect={handleIconSelect}
+          onClose={() => setIconPickerOpen(false)}
         />
       )}
       <div className="flex justify-between items-center mb-6 flex-shrink-0 pr-4">
@@ -398,6 +414,21 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
       </div>
 
       <div className="flex-grow overflow-y-auto pr-4 space-y-8">
+        {/* NEW (Phase 1.4): Local versions loading/error feedback */}
+        {loadingLocal && (
+          <div className="flex items-center gap-2 px-4 py-2 rounded-md bg-blue-500/10 border border-blue-500/30">
+            <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm text-blue-300">Loading local versions...</span>
+          </div>
+        )}
+        {localError && (
+          <div className="flex items-center gap-2 px-4 py-2 rounded-md bg-red-500/10 border border-red-500/30">
+            <span className="text-sm text-red-300">
+              Failed to load local versions. Using remote manifest only.
+            </span>
+          </div>
+        )}
+
         <div className="flex gap-8 items-start">
           <div className="flex flex-col items-center gap-4">
             <button
@@ -570,3 +601,4 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
 };
 
 export default InstallationForm;
+

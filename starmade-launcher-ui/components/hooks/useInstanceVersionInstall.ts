@@ -1,14 +1,27 @@
+/**
+ * useInstanceVersionInstall.ts
+ * 
+ * Hook to diagnose and repair instance versions/assets.
+ * Mirrors Vue's `instanceVersionInstall.ts` composable.
+ * 
+ * REFACTOR NOTE (Phase 1.3):
+ * - Now includes `getJavaPathForInstallProfile` (moved from `useResolvedJavaForInstance.ts`).
+ * - This matches Vue's pattern where `getJavaPathOrInstall` is defined in `instanceVersionInstall.ts`.
+ * - Uses `javaResolutionUtils.ts` for any shared auto-selection logic if needed.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import {
   InstallServiceKey,
   DiagnoseServiceKey,
   VersionServiceKey,
   JavaRecord,
+  JavaVersion,
+  ResolvedVersion,
 } from '@xmcl/runtime-api';
 import { Instance, RuntimeVersions } from '@xmcl/instance';
 import { useService } from './useService';
 import { useVersionService } from './useVersionService';
-import { getJavaPathForInstallProfile } from './useResolvedJavaForInstance';
 
 export interface InstanceInstallInstruction {
   instance: string;
@@ -22,26 +35,64 @@ export interface InstanceInstallInstruction {
   assetIndex?: any;
   optifine?: any;
   forge?: any;
-  java?: any;
+  java?: JavaVersion;
+}
+
+/**
+ * Pure helper function for install profile Java selection.
+ * Mirrors Vue's `getJavaPathOrInstall` from `instanceVersionInstall.ts`.
+ * 
+ * @param instance - The instance requiring Java
+ * @param javas - All detected Java installations
+ * @param resolved - The resolved version object (contains javaVersion requirement)
+ * @returns Java path (string), or JavaVersion object (to signal install needed)
+ */
+export function getJavaPathForInstallProfile(
+  instance: Instance | undefined,
+  javas: JavaRecord[],
+  resolved: ResolvedVersion,
+): string | { majorVersion: number } {
+  // Priority 1: Use instance's configured Java
+  if (instance?.java) {
+    return instance.java;
+  }
+
+  // Priority 2: Find valid Java matching required major version
+  const validJava = javas.find(
+    (v) =>
+      v.majorVersion === resolved.javaVersion.majorVersion &&
+      v.valid,
+  );
+
+  // Priority 3: Return JavaVersion object (signals auto-install needed)
+  return validJava ? validJava.path : resolved.javaVersion;
 }
 
 /**
  * Hook to diagnose and repair instance versions/assets.
  * 
- * REFACTOR NOTE: Now uses getJavaPathForInstallProfile from useResolvedJavaForInstance
- * instead of inline Java selection, matching Vue's instanceVersionInstall.ts.
+ * @param instancePath - Path to the instance
+ * @param instances - All instances (for Java fallback logic)
+ * @param javas - All detected Java installations
+ * @returns Diagnosis instruction, fix function, and loading state
  */
 export function useInstanceVersionInstall(
   instancePath: string,
   instances: Instance[],
-  javas: JavaRecord[]
-) {
+  javas: JavaRecord[],
+): {
+  instruction: InstanceInstallInstruction | undefined;
+  fix: () => Promise<void>;
+  loading: boolean;
+} {
   const diagnoseService = useService(DiagnoseServiceKey);
   const installService = useService(InstallServiceKey);
   const versionService = useService(VersionServiceKey);
   const { getMinecraftVersionList } = useVersionService();
 
-  const [instruction, setInstruction] = useState<InstanceInstallInstruction | undefined>(undefined);
+  const [instruction, setInstruction] = useState<
+    InstanceInstallInstruction | undefined
+  >(undefined);
   const [loading, setLoading] = useState(false);
 
   const instance = instances.find((i) => i.path === instancePath);
@@ -60,7 +111,9 @@ export function useInstanceVersionInstall(
       setLoading(true);
 
       try {
-        const resolved = await versionService.resolveLocalVersion(instance.version);
+        const resolved = await versionService.resolveLocalVersion(
+          instance.version,
+        );
 
         if (cancelled) return;
 
@@ -77,12 +130,13 @@ export function useInstanceVersionInstall(
         }
 
         // Case 2: Version exists, check for corruption/missing files
-        const [jarIssue, libIssues, assetIssues, profileIssue] = await Promise.all([
-          diagnoseService.diagnoseJar(resolved, 'client'),
-          diagnoseService.diagnoseLibraries(resolved),
-          diagnoseService.diagnoseAssets(resolved),
-          diagnoseService.diagnoseProfile(resolved.id, 'client', instancePath),
-        ]);
+        const [jarIssue, libIssues, assetIssues, profileIssue] =
+          await Promise.all([
+            diagnoseService.diagnoseJar(resolved, 'client'),
+            diagnoseService.diagnoseLibraries(resolved),
+            diagnoseService.diagnoseAssets(resolved),
+            diagnoseService.diagnoseProfile(resolved.id, 'client', instancePath),
+          ]);
 
         if (cancelled) return;
 
@@ -109,7 +163,7 @@ export function useInstanceVersionInstall(
           setInstruction(undefined);
         }
       } catch (error) {
-        console.error('[useInstanceVersionInstall] Diagnosis error:', error);
+        console.error('useInstanceVersionInstall: Diagnosis error', error);
         if (!cancelled) {
           setInstruction(undefined);
         }
@@ -125,27 +179,30 @@ export function useInstanceVersionInstall(
     return () => {
       cancelled = true;
     };
-  }, [instancePath, instance?.version, instance?.runtime, diagnoseService, versionService]);
+  }, [
+    instancePath,
+    instance?.version,
+    instance?.runtime,
+    diagnoseService,
+    versionService,
+  ]);
 
-  // --- Fix / Install Logic ---
+  // --- Fix (Install) Logic ---
   const fix = useCallback(async () => {
     if (!instruction || !instance) return;
 
     setLoading(true);
-
     try {
       // Scenario A: Full Install (Version not resolved)
       if (!instruction.resolvedVersion) {
-        console.log('[useInstanceVersionInstall] Full install for:', instruction.version);
+        console.log('useInstanceVersionInstall: Full install for', instruction.version);
         const list = await getMinecraftVersionList();
         const meta = list.versions.find((v) => v.id === instruction.version);
-
         if (meta) {
           await installService.installMinecraft(meta);
         } else {
           throw new Error(`Could not find metadata for version ${instruction.version}`);
         }
-
         setInstruction(undefined);
         return;
       }
@@ -159,32 +216,37 @@ export function useInstanceVersionInstall(
             instruction.resolvedVersion,
             instruction.version,
             instruction.runtime.minecraft,
-            'client'
-          )
+            'client',
+          ),
         );
       }
 
       if (instruction.libraries && instruction.libraries.length > 0) {
         promises.push(
           installService.installLibraries(
-            instruction.libraries.map((l) => l.library),
-            instruction.runtime.minecraft
-          )
+            instruction.libraries.map((l: any) => l.library),
+            instruction.runtime.minecraft,
+          ),
         );
       }
 
       if (instruction.assetIndex) {
         const list = await getMinecraftVersionList();
-        const versionMeta = list.versions.filter((v) => v.id === instruction.runtime.minecraft);
+        const versionMeta = list.versions.filter(
+          (v) => v.id === instruction.runtime.minecraft,
+        );
         promises.push(
-          installService.installAssetsForVersion(instruction.assetIndex.version, versionMeta)
+          installService.installAssetsForVersion(
+            instruction.assetIndex.version,
+            versionMeta,
+          ),
         );
       } else if (instruction.assets && instruction.assets.length > 0) {
         promises.push(
           installService.installAssets(
-            instruction.assets.map((a) => a.asset),
-            instruction.runtime.minecraft
-          )
+            instruction.assets.map((a: any) => a.asset),
+            instruction.runtime.minecraft,
+          ),
         );
       }
 
@@ -192,7 +254,10 @@ export function useInstanceVersionInstall(
       if (instruction.profile) {
         // NOTE: We resolve again here to get the JavaVersion requirement for the helper.
         // This is only for metadata extraction, not a second diagnosis pass.
-        const resolved = await versionService.resolveLocalVersion(instruction.resolvedVersion);
+        const resolved = await versionService.resolveLocalVersion(
+          instruction.resolvedVersion,
+        );
+
         if (resolved) {
           const javaPath = getJavaPathForInstallProfile(instance, javas, resolved);
 
@@ -203,24 +268,24 @@ export function useInstanceVersionInstall(
                 profile: instruction.profile.installProfile,
                 side: 'client',
                 java: javaPath,
-              })
+              }),
             );
           } else {
             // FUTURE WORK: Trigger Java installation here when javaPath is a JavaVersion object
             console.warn(
-              '[useInstanceVersionInstall] No valid Java found for profile install. ' +
-              `Required major version: ${javaPath.majorVersion}. Skipping installer.`
+              'useInstanceVersionInstall: No valid Java found for profile install. Required major version:',
+              javaPath.majorVersion,
+              '. Skipping installer.',
             );
           }
         }
       }
 
       await Promise.all(promises);
-      console.log('[useInstanceVersionInstall] Repair complete:', instance.path);
-
+      console.log('useInstanceVersionInstall: Repair complete', instance.path);
       setInstruction(undefined);
     } catch (e) {
-      console.error('[useInstanceVersionInstall] Repair failed:', e);
+      console.error('useInstanceVersionInstall: Repair failed', e);
       throw e;
     } finally {
       setLoading(false);
@@ -229,3 +294,4 @@ export function useInstanceVersionInstall(
 
   return { instruction, fix, loading };
 }
+

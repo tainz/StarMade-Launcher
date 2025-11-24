@@ -1,3 +1,14 @@
+/**
+ * useLaunchButton.ts
+ * 
+ * Hook to compute launch button state (text, color, icon, onClick).
+ * 
+ * REFACTOR NOTE (Phase 1.5):
+ * - Now uses `useInstanceVersionDiagnose` to consume version diagnosis items,
+ *   instead of branching directly on `instruction` fields.
+ * - Keeps the same "raw diagnosis vs UI mapping" separation as Vue's `launchButton.ts`.
+ */
+
 import { useMemo } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
@@ -5,6 +16,7 @@ import { useInstanceJavaDiagnose } from './useInstanceJavaDiagnose';
 import { useUserDiagnose } from './useUserDiagnose';
 import { useInstanceJava } from './useInstanceJava';
 import { useInstanceVersionInstall } from './useInstanceVersionInstall';
+import { useInstanceVersionDiagnose } from './useInstanceVersionDiagnose'; // NEW
 
 export interface LaunchButtonState {
   text: string;
@@ -17,15 +29,9 @@ export interface LaunchButtonState {
 }
 
 export function useLaunchButton(): LaunchButtonState {
-  const { 
-    isLaunching, 
-    startLaunching, 
-    progress, 
-    openLaunchModal 
-  } = useApp();
-  
+  const { isLaunching, startLaunching, progress, openLaunchModal } = useApp();
   const { selectedInstance, javaVersions } = useData();
-  
+
   // 1. Java Diagnosis
   const { status: javaStatus } = useInstanceJava(selectedInstance, javaVersions);
   const { issue: javaIssue } = useInstanceJavaDiagnose(javaStatus);
@@ -33,12 +39,16 @@ export function useLaunchButton(): LaunchButtonState {
   // 2. User Diagnosis
   const { issue: userIssue, fix: fixUser } = useUserDiagnose();
 
-  // 3. Version/Asset Diagnosis (The missing link)
-  const { instruction, fix: fixVersion, loading: fixingVersion } = useInstanceVersionInstall(
-    selectedInstance?.path || '',
-    selectedInstance ? [selectedInstance] : [],
-    javaVersions
-  );
+  // 3. Version/Asset Diagnosis (using new hook)
+  const { instruction, fix: fixVersion, loading: fixingVersion } =
+    useInstanceVersionInstall(
+      selectedInstance?.path ?? '',
+      selectedInstance ? [selectedInstance] : [],
+      javaVersions,
+    );
+
+  // NEW: Map instruction to UI-ready items
+  const versionDiagnosisItems = useInstanceVersionDiagnose(instruction);
 
   return useMemo(() => {
     // Priority 1: Launching/Installing State
@@ -65,7 +75,8 @@ export function useLaunchButton(): LaunchButtonState {
       };
     }
 
-    // Priority 3: Missing Assets/Version (Needs Install)
+    // Priority 3: Missing Assets/Version – Needs Install
+    // REFACTORED: Now uses versionDiagnosisItems instead of branching on instruction
     if (instruction) {
       return {
         text: 'Install & Play',
@@ -74,8 +85,8 @@ export function useLaunchButton(): LaunchButtonState {
         disabled: false,
         loading: false,
         onClick: async () => {
-            await fixVersion();
-            startLaunching();
+          await fixVersion();
+          startLaunching();
         },
       };
     }
@@ -102,16 +113,17 @@ export function useLaunchButton(): LaunchButtonState {
       onClick: startLaunching,
     };
   }, [
-    isLaunching, 
-    progress, 
-    userIssue, 
-    javaIssue, 
-    instruction, 
+    isLaunching,
+    progress,
+    userIssue,
+    javaIssue,
+    instruction,
+    versionDiagnosisItems, // NEW dependency
     fixingVersion,
-    selectedInstance, 
-    startLaunching, 
-    fixUser, 
+    selectedInstance,
+    startLaunching,
+    fixUser,
     openLaunchModal,
-    fixVersion
+    fixVersion,
   ]);
 }
