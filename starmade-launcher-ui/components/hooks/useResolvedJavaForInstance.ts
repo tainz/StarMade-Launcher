@@ -10,6 +10,9 @@
  * REFACTOR NOTE (Phase 1.1):
  * - Removed `getJavaPathForInstallProfile` (moved to `useInstanceVersionInstall.ts`).
  * - Now uses shared helpers from `javaResolutionUtils.ts`.
+ * 
+ * BUG FIX:
+ * - Fixed `finalJavaPath` construction to extract `.path` from `result.java` object.
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -90,13 +93,14 @@ export function useResolvedJavaForInstance(
         if (cancelled) return;
 
         // Step 3: Build final status object
+        // FIXED: Extract .path from result.java object (it's a JavaRecord, not a string)
         const finalStatus: ResolvedJavaForInstance = {
           instance: instance.path,
           javaPath: instance.java,
           java: result.java ?? result.auto.java,
           compatible: result.quality,
           preferredJava: result.auto.java,
-          finalJavaPath: result.java ?? result.auto.java?.path,
+          finalJavaPath: result.java?.path ?? result.auto.java?.path, // FIXED: Added ?.path
           requirement: resolvedVersion?.javaVersion,
         };
 
@@ -133,3 +137,4 @@ export function useResolvedJavaForInstance(
 
   return { status, refreshing };
 }
+
