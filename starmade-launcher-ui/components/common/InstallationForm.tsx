@@ -15,7 +15,7 @@ import { useData } from '../../contexts/DataContext';
 import { useApp } from '../../contexts/AppContext';
 import { useInstanceCreation } from '../hooks/useInstanceCreation';
 import { useInstanceEdit } from '../hooks/useInstanceEdit';
-import { useLocalVersions } from '../hooks/useLocalVersions'; // NEW (Phase 1.4)
+import { useLocalVersions } from '../hooks/useLocalVersions';
 import { CreateInstanceOption, EditInstanceOptions } from '@xmcl/runtime-api';
 
 // Discriminated union types for save data
@@ -183,9 +183,16 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
 
   const lastMemoryRef = useRef<number | undefined>(undefined);
   const isInitializedRef = useRef(false);
+  // FIXED: Add ref to track if form has been initialized to prevent re-initialization
+  const isFormInitializedRef = useRef(false);
 
-  // Initialize form state for create + edit
+  // FIXED: Separate initialization effect that runs only once
   useEffect(() => {
+    // Prevent re-initialization after first load
+    if (isFormInitializedRef.current) {
+      return;
+    }
+
     if (isNew) {
       updateField('name', item.name);
       updateField('version', item.version);
@@ -202,7 +209,7 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
       setIcon(instance.icon);
     }
 
-    // Java UI helpers
+    // Java UI helpers - initialize from item.java
     if (!item.java) {
       setJavaSelection('');
       setCustomJavaPath('');
@@ -216,11 +223,20 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
         setCustomJavaPath(item.java);
       }
     }
-  }, [isNew, item, instance, javaVersions, updateField, isServerMode]);
 
-  // Java sync (mode-aware)
+    // Mark form as initialized
+    isFormInitializedRef.current = true;
+  }, []); // FIXED: Empty deps - only run once on mount
+
+  // FIXED: Sync Java selection back to edit state (reactive, but doesn't reset UI)
   useEffect(() => {
+    // Skip if form not initialized yet
+    if (!isFormInitializedRef.current) {
+      return;
+    }
+
     const value = javaSelection === CUSTOM_JAVA_VALUE ? customJavaPath : javaSelection;
+    
     if (isNew) {
       updateField('javaPath', value);
     } else if (instance) {
@@ -229,7 +245,6 @@ const InstallationForm: React.FC<InstallationFormProps> = ({
   }, [javaSelection, customJavaPath, isNew, instance, updateField, updateEditField]);
 
   // Memory sync with infinite loop prevention
-  // FIXED: Track initialization to prevent syncing on load
   useEffect(() => {
     const effectiveMemory = isNew
       ? formState.memory
