@@ -5,12 +5,17 @@ import { useLaunchException } from './useLaunchException';
 
 export function useInstanceLaunch() {
   const launchService = useService(LaunchServiceKey);
-  const { error: launchError, onException, onError, clearError: clearLaunchError } = useLaunchException();
+  
+  // Phase 2.2: Use useLaunchException for error handling
+  const {
+    error: launchError,
+    onException,
+    onError,
+    clearError: clearLaunchError,
+  } = useLaunchException();
 
   const [isLaunching, setIsLaunching] = useState(false);
-  // FIX 1: Add state to store the Process ID
   const [pid, setPid] = useState<string | undefined>(undefined);
-
   const [gameExitError, setGameExitError] = useState<{
     code: number;
     crashReport?: string;
@@ -18,7 +23,7 @@ export function useInstanceLaunch() {
     errorLog?: string;
   } | null>(null);
 
-  // 1. Handle Game Exit / Crash Events
+  // Handle Minecraft exit events
   useEffect(() => {
     const handleMinecraftExit = (
       rawExit: any,
@@ -33,28 +38,29 @@ export function useInstanceLaunch() {
           : { code: rawExit, signal: rawSignal, crashReport: rawCrashReport, crashReportLocation: rawCrashReportLocation, errorLog: rawErrorLog };
 
       const { code, signal, crashReport, crashReportLocation, errorLog } = normalized;
-      console.log('[Minecraft exited]', code, signal);
 
+      console.log('Minecraft exited', { code, signal });
       setIsLaunching(false);
-      setPid(undefined); // Reset PID on exit
+      setPid(undefined);
 
       if (code !== 0) {
-        console.error('[Game crashed or exited with error]');
+        console.error('Game crashed or exited with error');
         setGameExitError({ code, crashReport, crashReportLocation, errorLog });
       }
     };
 
     if (launchService && typeof (launchService as any).on === 'function') {
       (launchService as any).on('minecraft-exit', handleMinecraftExit);
-      return () => {
-        if (typeof (launchService as any).removeListener === 'function') {
-          (launchService as any).removeListener('minecraft-exit', handleMinecraftExit);
-        }
-      };
     }
+
+    return () => {
+      if (launchService && typeof (launchService as any).removeListener === 'function') {
+        (launchService as any).removeListener('minecraft-exit', handleMinecraftExit);
+      }
+    };
   }, [launchService]);
 
-  // 2. The Launch Action
+  // Launch action
   const launch = useCallback(
     async (options: LaunchOptions): Promise<boolean> => {
       clearLaunchError();
@@ -62,15 +68,16 @@ export function useInstanceLaunch() {
       setIsLaunching(true);
 
       try {
-        // FIX 2: Capture the PID returned by launch
         const processId = await launchService.launch(options);
         if (typeof processId === 'string') {
-            setPid(processId);
+          setPid(processId);
         }
         return true;
       } catch (e) {
-        console.error('[Failed to launch game]', e);
+        console.error('Failed to launch game', e);
         setIsLaunching(false);
+        
+        // Phase 2.2: Use useLaunchException error handler
         onError(e);
         return false;
       }
@@ -78,13 +85,12 @@ export function useInstanceLaunch() {
     [launchService, onError, clearLaunchError]
   );
 
-  // 3. The Kill Action
+  // Kill action
   const kill = useCallback(async () => {
-    // FIX 3: Pass the stored PID to kill()
     if (pid) {
-        await launchService.kill(pid);
+      await launchService.kill(pid);
+      setIsLaunching(false);
     }
-    setIsLaunching(false);
   }, [launchService, pid]);
 
   const clearGameExitError = useCallback(() => {
@@ -97,7 +103,7 @@ export function useInstanceLaunch() {
     isLaunching,
     setIsLaunching,
     launchError,
-    setLaunchError: onException,
+    setLaunchError: onException, // Expose for external error setting
     clearLaunchError,
     gameExitError,
     clearGameExitError,

@@ -1,198 +1,185 @@
-/**
- * components/hooks/useLaunchButton.ts
- * 
- * REFACTOR NOTES (Phase 2.1):
- * - Now uses usePreLaunchFlush to execute pre-launch callbacks
- * - Full click sequence (flush → diagnosis → launch) moved here from AppContext
- * - Mirrors Vue's launchButton.ts onClick implementation
- */
-
-import { useMemo, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useData } from '../../contexts/DataContext';
-import { useInstanceJavaDiagnose } from './useInstanceJavaDiagnose';
 import { useUserDiagnose } from './useUserDiagnose';
-import { useInstanceJava } from './useInstanceJava';
 import { useInstanceVersionInstall } from './useInstanceVersionInstall';
 import { useInstanceVersionDiagnose } from './useInstanceVersionDiagnose';
+import { useInstanceJava } from './useInstanceJava';
+import { useInstanceJavaDiagnose } from './useInstanceJavaDiagnose';
+import { useResolvedJavaForInstance } from './useResolvedJavaForInstance';
+import { LaunchOptions } from '@xmcl/runtime-api';
 
 export interface LaunchButtonState {
   text: string;
-  color: 'green' | 'blue' | 'orange' | 'red' | 'gray';
-  icon?: string;
+  color: 'primary' | 'secondary' | 'danger' | 'warning';
   disabled: boolean;
-  loading: boolean;
-  progress?: number;
-  onClick: () => void;
+  onClick: () => Promise<void>;
+  isLoading: boolean;
 }
 
-/**
- * Hook to compute launch button state (text, color, icon, onClick).
- * 
- * REFACTOR NOTE (Phase 2.1):
- * - Now performs full launch orchestration in onClick:
- *   1. Execute pre-launch flush (autosave, etc.)
- *   2. Consult user/Java/version diagnostics
- *   3. Call startLaunching if all checks pass
- * - Mirrors Vue's launchButton.ts onClick implementation
- */
 export function useLaunchButton(): LaunchButtonState {
-  const { isLaunching, startLaunching, progress, openLaunchModal, registerPreLaunchFlush } = useApp();
-  const { selectedInstance, javaVersions } = useData();
+  const {
+    isLaunching,
+    startLaunching,
+    setIsLaunchModalOpen,
+    executePreLaunchFlush, // Phase 2.1: NEW
+  } = useApp();
 
-  // 1. Java Diagnosis
-  const { status: javaStatus } = useInstanceJava(selectedInstance, javaVersions);
-  const { issue: javaIssue } = useInstanceJavaDiagnose(javaStatus);
+  // FIX: useData returns the context directly, do not destructure { data }
+  const data = useData();
 
-  // 2. User Diagnosis
+  // Phase 2.1: Move diagnosis hooks FROM AppContext TO here
+  // User diagnosis
   const { issue: userIssue, fix: fixUser } = useUserDiagnose();
 
-  // 3. Version/Asset Diagnosis
+  // Version diagnosis
+  const selectedInstanceArray = useMemo(
+    () => (data.selectedInstance ? [data.selectedInstance] : []),
+    [data.selectedInstance]
+  );
+  const javaVersions = data.javaVersions ?? [];
+  
   const {
     instruction,
     fix: fixVersion,
     loading: fixingVersion,
   } = useInstanceVersionInstall(
-    selectedInstance?.path ?? '',
-    selectedInstance ? [selectedInstance] : [],
+    data.selectedInstance?.path ?? '',
+    selectedInstanceArray,
     javaVersions
   );
 
-  // NEW: Map instruction to UI-ready items (Phase 1.5)
-  const versionDiagnosisItems = useInstanceVersionDiagnose(instruction);
+  const versionIssues = useInstanceVersionDiagnose(instruction);
 
-  /**
-   * REFACTORED (Phase 2.1): Full launch click sequence.
-   * 
-   * Steps:
-   * 1. Execute all pre-launch flush listeners (autosave, etc.)
-   * 2. Check user auth (if expired/missing, fix and return)
-   * 3. Check version/assets (if issues, fix and return)
-   * 4. Check Java (if issues, show modal and return)
-   * 5. Call startLaunching to perform the actual launch
-   * 
-   * Mirrors Vue's launchButton.ts onClick implementation.
-   */
+  // Java diagnosis
+  const { status: javaStatus } = useInstanceJava(data.selectedInstance, javaVersions);
+  const { issue: javaIssue } = useInstanceJavaDiagnose(javaStatus);
+
+  // Resolved Java (for LaunchOptions building)
+  const { status: resolvedJava } = useResolvedJavaForInstance(
+    data.selectedInstance,
+    undefined,
+    javaVersions
+  );
+
+  // Phase 2.1: Full click sequence ownership
   const onClick = useCallback(async () => {
-    // If already launching/installing, do nothing
+    // Guard: already launching or fixing
     if (isLaunching || fixingVersion) return;
 
     try {
       // Step 1: Execute pre-launch flush (autosave, etc.)
-      // This is analogous to Vue's `for (const listener of listeners) await listener()`
-      // For now, we don't have access to the executeAll method here, so we'll assume
-      // AppContext handles this in startLaunching. If we want to move it here,
-      // we need to pass executeAll from AppContext.
-      // TODO: Pass executeAll from AppContext if we want to move flush here.
+      // Phase 2.1: NEW - was missing in original implementation
+      await executePreLaunchFlush();
 
       // Step 2: User diagnosis
       if (userIssue) {
-        // Fix user auth issue and return (don't continue to launch)
         await fixUser();
         return;
       }
 
       // Step 3: Version/asset diagnosis
       if (instruction) {
-        // Fix version issues and then launch
         await fixVersion();
-        // After fix, proceed to launch
-        await startLaunching();
-        return;
+        // After fix, launch with corrected version
+        // Fall through to Step 5 (build options and launch)
       }
 
       // Step 4: Java diagnosis
       if (javaIssue) {
-        // Open launch modal to show Java issues
-        openLaunchModal();
+        // Show modal for user to select Java
+        setIsLaunchModalOpen(true);
         return;
       }
 
-      // Step 5: All checks passed - launch!
-      await startLaunching();
+      // Step 5: All checks passed - build LaunchOptions and launch
+      // Phase 2.1: Build options HERE, not in AppContext
+      if (!data.selectedInstance) {
+        console.error('useLaunchButton: No instance selected');
+        return;
+      }
+
+      if (!data.activeAccount) {
+        console.error('useLaunchButton: No active account');
+        return;
+      }
+
+      if (!resolvedJava?.finalJavaPath) {
+        console.error('useLaunchButton: No Java path resolved');
+        setIsLaunchModalOpen(true);
+        return;
+      }
+
+      const versionToLaunch =
+        data.selectedInstance.version ?? data.selectedInstance.runtime?.minecraft;
+
+      if (!versionToLaunch) {
+        console.error('useLaunchButton: No version to launch');
+        return;
+      }
+
+      const options: LaunchOptions = {
+        version: versionToLaunch,
+        gameDirectory: data.selectedInstance.path,
+        user: data.activeAccount,
+        java: resolvedJava.finalJavaPath,
+        maxMemory: data.selectedInstance.maxMemory,
+        minMemory: data.selectedInstance.minMemory,
+        vmOptions: data.selectedInstance.vmOptions,
+        mcOptions: data.selectedInstance.mcOptions,
+      };
+
+      // Phase 2.1 / 5.1: Call AppContext with PRE-BUILT options
+      await startLaunching(options);
     } catch (e) {
-      console.error('[useLaunchButton] Click sequence failed:', e);
+      console.error('useLaunchButton: Click sequence failed', e);
     }
   }, [
     isLaunching,
     fixingVersion,
+    executePreLaunchFlush, // Phase 2.1: NEW dependency
     userIssue,
     fixUser,
     instruction,
     fixVersion,
     javaIssue,
-    openLaunchModal,
+    setIsLaunchModalOpen,
+    data.selectedInstance,
+    data.activeAccount,
+    resolvedJava,
     startLaunching,
   ]);
 
-  return useMemo<LaunchButtonState>(() => {
-    // Priority 1: Launching/Installing State
-    if (isLaunching || fixingVersion) {
-      return {
-        text: fixingVersion ? `Installing... ${Math.round(progress)}%` : `Launching... ${Math.round(progress)}%`,
-        color: 'green',
-        disabled: true,
-        loading: true,
-        progress: progress,
-        onClick: () => {},
-      };
-    }
+  // Button facade (UI state)
+  const disabled = useMemo(() => {
+    return (
+      !data.selectedInstance ||
+      !data.activeAccount ||
+      isLaunching ||
+      fixingVersion
+    );
+  }, [data.selectedInstance, data.activeAccount, isLaunching, fixingVersion]);
 
-    // Priority 2: User Auth Issues
-    if (userIssue) {
-      return {
-        text: userIssue.type === 'expired' ? 'Log In Again' : 'Log In',
-        color: 'blue',
-        icon: 'user',
-        disabled: false,
-        loading: false,
-        onClick,
-      };
-    }
+  const text = useMemo(() => {
+    if (isLaunching) return 'Launching...';
+    if (fixingVersion) return 'Installing...';
+    if (userIssue) return 'Login Required';
+    if (instruction) return 'Install Required';
+    if (javaIssue) return 'Java Issue';
+    return 'Launch';
+  }, [isLaunching, fixingVersion, userIssue, instruction, javaIssue]);
 
-    // Priority 3: Missing Assets/Version (Needs Install)
-    // REFACTORED (Phase 1.5): Now uses versionDiagnosisItems instead of branching on instruction
-    if (instruction) {
-      return {
-        text: 'Install & Play',
-        color: 'blue',
-        icon: 'download',
-        disabled: false,
-        loading: false,
-        onClick,
-      };
-    }
+  const color = useMemo<'primary' | 'secondary' | 'danger' | 'warning'>(() => {
+    if (javaIssue) return 'danger';
+    if (instruction || userIssue) return 'warning';
+    return 'primary';
+  }, [javaIssue, instruction, userIssue]);
 
-    // Priority 4: Java Issues
-    if (javaIssue) {
-      return {
-        text: 'Fix Java',
-        color: 'orange',
-        icon: 'wrench',
-        disabled: false,
-        loading: false,
-        onClick,
-      };
-    }
-
-    // Priority 5: Ready to Launch
-    return {
-      text: 'Launch',
-      color: 'green',
-      icon: 'play',
-      disabled: !selectedInstance,
-      loading: false,
-      onClick,
-    };
-  }, [
-    isLaunching,
-    progress,
-    userIssue,
-    javaIssue,
-    instruction,
-    versionDiagnosisItems,
-    fixingVersion,
-    selectedInstance,
+  return {
+    text,
+    color,
+    disabled,
     onClick,
-  ]);
+    isLoading: isLaunching || fixingVersion,
+  };
 }

@@ -1,90 +1,98 @@
-/**
- * contexts/AppContext.tsx
- * 
- * REFACTOR NOTES (Phase 2.1):
- * - Now uses usePreLaunchFlush hook instead of preLaunchFlushRef
- * - Exposes registration methods but does NOT execute flush in startLaunching
- * - Full launch orchestration (flush + diagnosis) moved to useLaunchButton
- */
-
-import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect, useMemo } from 'react';
-import type { AppContextType, Page, PageProps } from '../types';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { useData } from './DataContext';
-import { LaunchOptions, TaskState } from '@xmcl/runtime-api';
-import { useTaskManager } from '../components/hooks/useTaskManager';
-import { useInstanceVersionInstall } from '../components/hooks/useInstanceVersionInstall';
-import { useInstanceJava } from '../components/hooks/useInstanceJava';
-import { useInstanceJavaDiagnose } from '../components/hooks/useInstanceJavaDiagnose';
-import { useUserDiagnose } from '../components/hooks/useUserDiagnose';
 import { useInstanceLaunch } from '../components/hooks/useInstanceLaunch';
-import { useResolvedJavaForInstance } from '../components/hooks/useResolvedJavaForInstance';
-import { usePreLaunchFlush } from '../components/hooks/usePreLaunchFlush'; // NEW
+import { useTaskManager } from '../components/hooks/useTaskManager';
+import { usePreLaunchFlush } from '../components/hooks/usePreLaunchFlush';
+import { LaunchOptions, TaskState, TaskItem } from '@xmcl/runtime-api';
 
-type InternalAppContextType = AppContextType & {
+type Page = 'play' | 'installations' | 'settings' | 'news';
+
+interface PageProps {
+  installationId?: string;
+}
+
+interface AppContextValue {
+  // Navigation
+  activePage: Page;
+  pageProps: PageProps;
+  navigateTo: (page: Page, props?: PageProps) => void;
+
+  // Modals
+  isLaunchModalOpen: boolean;
+  setIsLaunchModalOpen: (open: boolean) => void;
+
+  // Progress (UI display only)
+  progress: number;
+
+  // Launch orchestration - SIMPLIFIED (no diagnosis)
+  startLaunching: (options: LaunchOptions) => Promise<void>;
+  isLaunching: boolean;
   launchError: any;
   clearLaunchError: () => void;
-  fixingVersion?: boolean;
-  needsInstall: boolean;
-  // ADDED: Pre-launch flush registry (Phase 2.1)
-  registerPreLaunchFlush: (flush: () => void | Promise<void>) => void;
-  unregisterPreLaunchFlush: (flush: () => void | Promise<void>) => void;
-};
+  gameExitError: any;
+  clearGameExitError: () => void;
 
-const AppContext = createContext<InternalAppContextType>(undefined!);
+  // Pre-launch flush (Phase 2.1)
+  registerPreLaunchFlush: (listener: () => void | Promise<void>) => void;
+  unregisterPreLaunchFlush: (listener: () => void | Promise<void>) => void;
+  executePreLaunchFlush: () => Promise<void>; // NEW: expose for useLaunchButton
 
-export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [activePage, setActivePage] = useState<Page>('Play');
+  // Tasks (for UI display)
+  tasks: TaskItem[];
+  // FIX: Updated signatures to match useTaskManager (accepts TaskItem object, not string ID)
+  pauseTask: (task: TaskItem) => void;
+  resumeTask: (task: TaskItem) => void;
+  cancelTask: (task: TaskItem) => void;
+}
+
+const AppContext = createContext<AppContextValue | undefined>(undefined);
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // FIX: Removed incorrect destructuring of 'data' which caused "Property 'data' does not exist" error.
+  // The data context is not used in this provider logic, so it was removed.
+  // If needed in future: const data = useData();
+
+  // Navigation state
+  const [activePage, setActivePage] = useState<Page>('play');
   const [pageProps, setPageProps] = useState<PageProps>({});
+
+  const navigateTo = useCallback((page: Page, props: PageProps = {}) => {
+    setActivePage(page);
+    setPageProps(props);
+  }, []);
+
+  // Modal state
   const [isLaunchModalOpen, setIsLaunchModalOpen] = useState(false);
+
+  // Progress state (UI only)
   const [progress, setProgress] = useState(0);
 
-  // NEW: Pre-launch flush hook (Phase 2.1)
+  // Phase 2.1: Pre-launch flush hook
   const { register, unregister, executeAll } = usePreLaunchFlush();
 
-  const data = useData();
-  const { tasks, pause, resume, cancel } = useTaskManager();
+  // Launch hook (Phase 2.2: uses useLaunchException internally)
   const {
     launch,
     isLaunching,
-    setIsLaunching,
     launchError,
-    setLaunchError,
     clearLaunchError,
     gameExitError,
     clearGameExitError,
   } = useInstanceLaunch();
 
-  const javaVersions = data.javaVersions ?? [];
-  const { status: javaStatus, refreshing: javaRefreshing } = useInstanceJava(
-    data.selectedInstance,
-    javaVersions
-  );
-  const { issue: javaIssue } = useInstanceJavaDiagnose(javaStatus);
-  const { issue: userIssue, fix: fixUser } = useUserDiagnose();
+  // Task manager (for UI display)
+  const { tasks, pause, resume, cancel } = useTaskManager();
 
-  const selectedInstanceArray = useMemo(
-    () => (data.selectedInstance ? [data.selectedInstance] : []),
-    [data.selectedInstance]
-  );
-  const { instruction, fix, loading: fixingVersion } = useInstanceVersionInstall(
-    data.selectedInstance?.path ?? '',
-    selectedInstanceArray,
-    javaVersions
-  );
-
-  const { status: resolvedJava } = useResolvedJavaForInstance(
-    data.selectedInstance,
-    undefined,
-    javaVersions
-  );
-
+  // Derive aggregate progress for UI (Phase 3 will move to useTasks)
   const launchProgress = useMemo(() => {
     const activeTasks = tasks.filter((t) => t.state === TaskState.Running);
     if (activeTasks.length === 0) return 0;
+
     const totalProgress = activeTasks.reduce((sum, t) => {
       if (t.total === 0) return sum;
-      return sum + (t.progress / t.total) * 100;
+      return sum + ((t.progress / t.total) * 100);
     }, 0);
+
     return totalProgress / activeTasks.length;
   }, [tasks]);
 
@@ -92,148 +100,66 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setProgress(launchProgress);
   }, [launchProgress]);
 
-  // Sync isLaunching with task presence
-  useEffect(() => {
-    const hasActiveTasks = tasks.some((t) => t.state === TaskState.Running);
-    if (hasActiveTasks && !isLaunching) {
-      setIsLaunching(true);
-    } else if (!hasActiveTasks && isLaunching) {
-      const timeout = setTimeout(() => {
-        if (progress === 0) setIsLaunching(false);
-      }, 1500);
-      return () => clearTimeout(timeout);
-    }
-  }, [tasks, isLaunching, setIsLaunching, progress]);
+  // Phase 2.1 / 5.1: Strengthened AppContext.startLaunching
+  // ONLY builds LaunchOptions and calls launch - NO diagnosis
+  const startLaunching = useCallback(
+    async (options: LaunchOptions) => {
+      // Close modal and clear errors (UI concerns only)
+      setIsLaunchModalOpen(false);
+      clearGameExitError();
+      clearLaunchError();
 
-  const navigate = (page: Page, props?: PageProps) => {
-    setActivePage(page);
-    setPageProps(props ?? {});
-  };
-
-  const openLaunchModal = () => {
-    if (!isLaunching && !fixingVersion) setIsLaunchModalOpen(true);
-  };
-
-  const closeLaunchModal = () => setIsLaunchModalOpen(false);
-
-  /**
-   * REFACTORED (Phase 2.1): startLaunching now ONLY builds LaunchOptions and calls launch.
-   * All diagnosis and pre-launch flush logic moved to useLaunchButton.
-   * This matches Vue's pattern where launchButton.ts owns the onClick sequence,
-   * and AppContext only provides the launch action.
-   */
-  const startLaunching = useCallback(async () => {
-    if (!data.selectedInstance) {
-      setLaunchError({
-        title: 'No Instance Selected',
-        description: 'Please select an installation.',
-      });
-      return;
-    }
-
-    // Close modal and clear errors
-    setIsLaunchModalOpen(false);
-    clearGameExitError();
-    clearLaunchError();
-
-    try {
-      // Build launch options from resolved data
-      let versionToLaunch =
-        data.selectedInstance.version ?? data.selectedInstance.runtime?.minecraft;
-
-      if (!versionToLaunch) {
-        setLaunchError({
-          title: 'Missing Version',
-          description: 'No Minecraft version configured.',
-        });
-        return;
+      try {
+        // Simply call launch with pre-built options
+        await launch(options);
+      } catch (e) {
+        // Error handling is done by useInstanceLaunch via useLaunchException
+        console.error('AppContext: Launch error:', e);
       }
+    },
+    [launch, clearGameExitError, clearLaunchError]
+  );
 
-      // If there's an install instruction, fix it first
-      if (instruction) {
-        console.log('[AppContext] Fixing instance...', instruction);
-        await fix();
-        // After fix, version might have changed
-        versionToLaunch =
-          data.selectedInstance.version ?? data.selectedInstance.runtime?.minecraft;
-      }
-
-      const finalJavaPath = resolvedJava?.finalJavaPath;
-      if (!finalJavaPath) {
-        setLaunchError({
-          title: 'No Java Found',
-          description: 'Cannot launch without a valid Java installation.',
-        });
-        return;
-      }
-
-      console.log('[AppContext] Launching with Java:', finalJavaPath);
-
-      const options: LaunchOptions = {
-        version: versionToLaunch,
-        gameDirectory: data.selectedInstance.path,
-        user: data.activeAccount!,
-        java: finalJavaPath,
-        maxMemory: data.selectedInstance.maxMemory,
-        minMemory: data.selectedInstance.minMemory,
-        vmOptions: data.selectedInstance.vmOptions,
-        mcOptions: data.selectedInstance.mcOptions,
-      };
-
-      await launch(options);
-    } catch (e) {
-      console.error('[AppContext] Launch error:', e);
-    }
-  }, [
-    data.selectedInstance,
-    data.activeAccount,
-    instruction,
-    fix,
-    launch,
-    setLaunchError,
-    clearGameExitError,
-    clearLaunchError,
-    resolvedJava,
-  ]);
-
-  const completeLaunching = () => {
-    setIsLaunching(false);
-    setProgress(0);
-  };
-
-  const value: InternalAppContextType = {
+  const value: AppContextValue = {
+    // Navigation
     activePage,
     pageProps,
+    navigateTo,
+
+    // Modals
     isLaunchModalOpen,
-    isLaunching,
+    setIsLaunchModalOpen,
+
+    // Progress
     progress,
-    navigate,
-    openLaunchModal,
-    closeLaunchModal,
+
+    // Launch (simplified)
     startLaunching,
-    completeLaunching,
+    isLaunching,
+    launchError,
+    clearLaunchError,
+    gameExitError,
+    clearGameExitError,
+
+    // Pre-launch flush (Phase 2.1)
+    registerPreLaunchFlush: register,
+    unregisterPreLaunchFlush: unregister,
+    executePreLaunchFlush: executeAll,
+
+    // Tasks
     tasks,
     pauseTask: pause,
     resumeTask: resume,
     cancelTask: cancel,
-    gameExitError,
-    clearGameExitError,
-    launchError,
-    clearLaunchError,
-    fixingVersion,
-    needsInstall: !!instruction,
-    // NEW: Pre-launch flush registry (Phase 2.1)
-    registerPreLaunchFlush: register,
-    unregisterPreLaunchFlush: unregister,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
 
-export const useApp = (): InternalAppContextType => {
+export const useApp = () => {
   const context = useContext(AppContext);
-  if (context === undefined) {
-    throw new Error('useApp must be used within an AppProvider');
+  if (!context) {
+    throw new Error('useApp must be used within AppProvider');
   }
   return context;
 };

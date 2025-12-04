@@ -6,6 +6,8 @@ export interface UsePreLaunchFlushReturn {
   executeAll: () => Promise<void>;
 }
 
+// Phase 2.1: Pre-launch listener registry
+// Mirrors Vue's launchButton.ts pre-click listener pattern
 export function usePreLaunchFlush(): UsePreLaunchFlushReturn {
   const listenersRef = useRef<Set<() => void | Promise<void>>>(new Set());
 
@@ -18,11 +20,15 @@ export function usePreLaunchFlush(): UsePreLaunchFlushReturn {
   }, []);
 
   const executeAll = useCallback(async () => {
-    // FIX: Explicitly type the array so .map knows 'listener' is a function
-    const listeners = Array.from(listenersRef.current) as Array<() => void | Promise<void>>;
-    
+    const listeners = Array.from(listenersRef.current) as Array<
+      () => void | Promise<void>
+    >;
     await Promise.all(listeners.map((listener) => listener()));
   }, []);
 
-  return { register, unregister, executeAll };
+  return {
+    register,
+    unregister,
+    executeAll,
+  };
 }
