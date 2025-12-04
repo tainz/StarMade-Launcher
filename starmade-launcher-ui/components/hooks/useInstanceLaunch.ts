@@ -1,26 +1,16 @@
-/**
- * components/hooks/useInstanceLaunch.ts
- * 
- * REFACTOR NOTES (Phase 2.2):
- * - Now uses useLaunchException internally to handle error mapping
- * - Exposes exception hook's error state and clearError method
- * - All error mapping centralized in useLaunchException
- */
-
 import { useState, useEffect, useCallback } from 'react';
 import { LaunchServiceKey, LaunchOptions } from '@xmcl/runtime-api';
 import { useService } from './useService';
-import { useLaunchException } from './useLaunchException'; // NEW
+import { useLaunchException } from './useLaunchException';
 
 export function useInstanceLaunch() {
   const launchService = useService(LaunchServiceKey);
-
-  // NEW: Launch exception hook (Phase 2.2)
   const { error: launchError, onException, onError, clearError: clearLaunchError } = useLaunchException();
 
   const [isLaunching, setIsLaunching] = useState(false);
+  // FIX 1: Add state to store the Process ID
+  const [pid, setPid] = useState<string | undefined>(undefined);
 
-  // State for GameExitModal (AppGameExitDialog)
   const [gameExitError, setGameExitError] = useState<{
     code: number;
     crashReport?: string;
@@ -46,6 +36,7 @@ export function useInstanceLaunch() {
       console.log('[Minecraft exited]', code, signal);
 
       setIsLaunching(false);
+      setPid(undefined); // Reset PID on exit
 
       if (code !== 0) {
         console.error('[Game crashed or exited with error]');
@@ -66,18 +57,20 @@ export function useInstanceLaunch() {
   // 2. The Launch Action
   const launch = useCallback(
     async (options: LaunchOptions): Promise<boolean> => {
-      clearLaunchError(); // Clear previous errors
+      clearLaunchError();
       setGameExitError(null);
       setIsLaunching(true);
 
       try {
-        await launchService.launch(options);
+        // FIX 2: Capture the PID returned by launch
+        const processId = await launchService.launch(options);
+        if (typeof processId === 'string') {
+            setPid(processId);
+        }
         return true;
       } catch (e) {
         console.error('[Failed to launch game]', e);
         setIsLaunching(false);
-        
-        // NEW: Use exception hook to map error (Phase 2.2)
         onError(e);
         return false;
       }
@@ -87,9 +80,12 @@ export function useInstanceLaunch() {
 
   // 3. The Kill Action
   const kill = useCallback(async () => {
-    await launchService.kill(); // Implement if backend supports it
+    // FIX 3: Pass the stored PID to kill()
+    if (pid) {
+        await launchService.kill(pid);
+    }
     setIsLaunching(false);
-  }, [launchService]);
+  }, [launchService, pid]);
 
   const clearGameExitError = useCallback(() => {
     setGameExitError(null);
@@ -99,9 +95,9 @@ export function useInstanceLaunch() {
     launch,
     kill,
     isLaunching,
-    setIsLaunching, // Exposed for AppContext to sync with tasks
-    launchError, // NEW: Now from useLaunchException (Phase 2.2)
-    setLaunchError: onException, // NEW: Alias for AppContext compatibility (Phase 2.2)
+    setIsLaunching,
+    launchError,
+    setLaunchError: onException,
     clearLaunchError,
     gameExitError,
     clearGameExitError,
