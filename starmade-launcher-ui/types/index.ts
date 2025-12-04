@@ -1,4 +1,4 @@
-import type { MinecraftVersion, CreateInstanceOption, EditInstanceOptions, Instance, UserProfile, JavaRecord } from '@xmcl/runtime-api';
+import type { MinecraftVersion, CreateInstanceOption, EditInstanceOptions, Instance, UserProfile, JavaRecord, LaunchOptions } from '@xmcl/runtime-api';
 import type { TaskItem } from '../components/hooks/useTaskManager';
 
 export type ItemType = 'latest' | 'release' | 'dev' | 'archive' | 'pre';
@@ -28,22 +28,57 @@ export interface PageProps {
   initialTab?: InstallationsTab;
 }
 
-// Context Types
+/**
+ * AppContextType - Updated for Phase 2 Launch Orchestration Refactor
+ * 
+ * CHANGES:
+ * - startLaunching now accepts LaunchOptions (diagnosis moved to useLaunchButton)
+ * - Added Phase 2.1 pre-launch flush methods
+ * - Added Phase 2.2 launch exception state
+ * - Added UI state flags (needsInstall, fixingVersion)
+ */
 export interface AppContextType {
+  // Navigation
   activePage: Page;
   pageProps: PageProps;
-  isLaunchModalOpen: boolean;
-  isLaunching: boolean;
-  progress: number;
   navigate: (page: Page, props?: PageProps) => void;
+
+  // Modals
+  isLaunchModalOpen: boolean;
   openLaunchModal: () => void;
   closeLaunchModal: () => void;
-  startLaunching: () => void;
+
+  // Progress
+  progress: number;
+
+  // Launch orchestration (Phase 2 refactored)
+  startLaunching: (options: LaunchOptions) => Promise<void>; // CHANGED: now accepts LaunchOptions
   completeLaunching: () => void;
-  gameExitError: { code: number; crashReport?: string; crashReportLocation?: string; errorLog?: string } | null;
-  clearGameExitError: () => void;
+  isLaunching: boolean;
   
-  // Task manager properties
+  // Phase 2.2: Launch exception state
+  launchError: any;
+  clearLaunchError: () => void;
+  
+  // Game exit errors
+  gameExitError: { 
+    code: number; 
+    crashReport?: string; 
+    crashReportLocation?: string; 
+    errorLog?: string;
+  } | null;
+  clearGameExitError: () => void;
+
+  // Phase 2.1: Pre-launch flush registry
+  registerPreLaunchFlush: (listener: () => void | Promise<void>) => void;
+  unregisterPreLaunchFlush: (listener: () => void | Promise<void>) => void;
+  executePreLaunchFlush: () => Promise<void>;
+
+  // UI state flags (for display only, not orchestration)
+  needsInstall: boolean;
+  fixingVersion: boolean;
+
+  // Task manager
   tasks: TaskItem[];
   pauseTask: (task: TaskItem) => void;
   resumeTask: (task: TaskItem) => void;
@@ -95,7 +130,7 @@ export interface DataContextType {
   setSelectedVersion: (version: { id: string; name: string; type: ItemType }) => void;
   
   // Java state
-  javaVersions: JavaRecord[];  // Changed from any[]
+  javaVersions: JavaRecord[];
   javaIsMissing: boolean;
   refreshJava: () => void;
   
