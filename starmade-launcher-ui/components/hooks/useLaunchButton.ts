@@ -10,16 +10,13 @@ import { useInstanceFilesDiagnose } from './useInstanceFilesDiagnose';
 
 /**
  * Phase 2.1: Launch button orchestration hook.
- * Mirrors Vue's launchButton.ts composable with full click sequence:
+ * Mirrors Vue's launchButton.ts composable with full 6-step click sequence:
  * 1. Execute pre-launch flush (autosave, etc.)
- * 2. Check user diagnosis
- * 3. Check version diagnosis
- * 4. Check file diagnosis (NEW - matches Vue line 172)
- * 5. Check Java diagnosis
+ * 2. Check user diagnosis (login required)
+ * 3. Check version diagnosis (version jar/libs/assets missing)
+ * 4. Check file diagnosis (instance-specific files: mods, configs, unzip errors)
+ * 5. Check Java diagnosis (incompatible Java version)
  * 6. Build LaunchOptions and call startLaunching
- * 
- * This hook owns ALL launch orchestration logic. AppContext.startLaunching
- * only receives pre-built LaunchOptions and calls launch.
  */
 export function useLaunchButton(
   data: any,
@@ -36,7 +33,7 @@ export function useLaunchButton(
     data.selectedInstance
   );
 
-  // Step 3: Version diagnosis
+  // Step 3: Version diagnosis (global version files)
   const { instruction, install: fixVersion, loading: fixingVersion } = useInstanceVersionInstall(
     data.selectedInstance?.path ?? '',
     data.instances,
@@ -44,8 +41,8 @@ export function useLaunchButton(
   );
   const versionIssues = useInstanceVersionDiagnose(instruction);
 
-  // Step 4: File diagnosis (NEW - Phase 2.1 critical finding)
-  const { issue: fileIssue, fixFiles } = useInstanceFilesDiagnose(
+  // Step 4: File diagnosis (instance-specific files)
+  const { issue: fileIssue, fixFiles, loading: fixingFiles } = useInstanceFilesDiagnose(
     data.selectedInstance?.path
   );
 
@@ -68,7 +65,7 @@ export function useLaunchButton(
    * Mirrors Vue's launchButton.ts onClick (lines 147-179).
    */
   const onClick = useCallback(async () => {
-    if (isLaunching || fixingVersion) {
+    if (isLaunching || fixingVersion || fixingFiles) {
       return;
     }
 
@@ -82,13 +79,14 @@ export function useLaunchButton(
         return;
       }
 
-      // Step 3: Version diagnosis
+      // Step 3: Version diagnosis (global version files)
       if (instruction) {
         await fixVersion();
         return;
       }
 
-      // Step 4: File diagnosis (NEW - matches Vue line 172)
+      // Step 4: File diagnosis (instance-specific files)
+      // CRITICAL: This is the missing step from the original audit
       if (fileIssue) {
         await fixFiles();
         return;
@@ -108,7 +106,6 @@ export function useLaunchButton(
 
       const instance = data.selectedInstance;
 
-      // Build launch options from instance data
       const options: LaunchOptions = {
         instancePath: instance.path,
         version: instance.version || instance.runtime.minecraft,
@@ -135,7 +132,6 @@ export function useLaunchButton(
           false,
       };
 
-      // Delegate to AppContext.startLaunching
       await startLaunching(options);
     } catch (e) {
       console.error('useLaunchButton: Click sequence failed', e);
@@ -143,6 +139,7 @@ export function useLaunchButton(
   }, [
     isLaunching,
     fixingVersion,
+    fixingFiles,
     executePreLaunchFlush,
     userIssue,
     fixUser,
@@ -162,17 +159,18 @@ export function useLaunchButton(
   // Button display state
   const text = useMemo(() => {
     if (isLaunching) return 'Launching...';
-    if (fixingVersion) return 'Installing...';
+    if (fixingVersion) return 'Installing Version...';
+    if (fixingFiles) return 'Installing Files...';
     if (userIssue) return 'Login Required';
-    if (versionIssues.length > 0) return 'Install Required';
-    if (fileIssue) return 'Repair Required';
-    if (javaIssue) return 'Java Issue';
+    if (versionIssues.length > 0) return 'Install Version';
+    if (fileIssue) return 'Install Files';
+    if (javaIssue) return 'Fix Java';
     return 'Launch';
-  }, [isLaunching, fixingVersion, userIssue, versionIssues, fileIssue, javaIssue]);
+  }, [isLaunching, fixingVersion, fixingFiles, userIssue, versionIssues, fileIssue, javaIssue]);
 
   const disabled = useMemo(() => {
-    return isLaunching || fixingVersion || !data.selectedInstance;
-  }, [isLaunching, fixingVersion, data.selectedInstance]);
+    return isLaunching || fixingVersion || fixingFiles || !data.selectedInstance;
+  }, [isLaunching, fixingVersion, fixingFiles, data.selectedInstance]);
 
   return {
     onClick,
