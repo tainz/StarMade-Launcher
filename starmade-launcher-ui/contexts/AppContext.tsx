@@ -1,73 +1,140 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import type { AppContextType, Page, PageProps } from '../types';
+import React, {
+  createContext,
+  useContext,
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
+import { LaunchOptions, TaskState } from '@xmcl/runtime-api';
 import { useData } from './DataContext';
 import { useInstanceLaunch } from '../components/hooks/useInstanceLaunch';
 import { useTaskManager } from '../components/hooks/useTaskManager';
 import { usePreLaunchFlush } from '../components/hooks/usePreLaunchFlush';
-import { useInstanceVersionInstall } from '../components/hooks/useInstanceVersionInstall';
-import { LaunchOptions, TaskState } from '@xmcl/runtime-api';
+
+/**
+ * Phase 2.1 / 5.1: AppContext boundaries strengthened.
+ * 
+ * AppContext is now limited to:
+ * - Navigation and modal toggles
+ * - Aggregating domain hooks (DataContext, useInstanceLaunch, useTaskManager)
+ * - Exposing pre-launch flush registration API
+ * 
+ * AppContext does NOT own:
+ * - Diagnosis logic (removed useInstanceVersionInstall, needsInstall, fixingVersion)
+ * - Launch orchestration (moved to useLaunchButton)
+ * - Error mapping (moved to useLaunchException via useInstanceLaunch)
+ * 
+ * Task aggregation remains here temporarily (deferred to Phase 3 useTasks).
+ */
+
+export interface AppContextType {
+  // Navigation
+  currentPage: string;
+  setCurrentPage: (page: string) => void;
+
+  // Modal state
+  isLaunchModalOpen: boolean;
+  setIsLaunchModalOpen: (open: boolean) => void;
+
+  // Launch orchestration
+  /**
+   * Phase 2.1 / 5.1: startLaunching ONLY receives pre-built LaunchOptions
+   * and calls useInstanceLaunch.launch(). NO diagnosis logic here.
+   */
+  startLaunching: (options: LaunchOptions) => Promise<void>;
+  isLaunching: boolean;
+
+  // Pre-launch flush API (Phase 2.1)
+  registerPreLaunchFlush: (listener: () => void | Promise<void>) => void;
+  unregisterPreLaunchFlush: (listener: () => void | Promise<void>) => void;
+
+  // Launch error state (from useLaunchException via useInstanceLaunch)
+  launchError: {
+    title: string;
+    description: string;
+    extraText?: string;
+    unexpected?: boolean;
+  } | null;
+  clearLaunchError: () => void;
+
+  // Game exit error
+  gameExitError: {
+    code: number;
+    crashReport?: string;
+    crashReportLocation?: string;
+    errorLog?: string;
+  } | null;
+  clearGameExitError: () => void;
+
+  // Task management
+  tasks: any[];
+  launchProgress: number;
+
+  // REMOVED Phase 2.1 / 5.1: No more diagnosis state
+  // - needsInstall: boolean (REMOVED)
+  // - fixingVersion: boolean (REMOVED)
+}
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const data = useData();
 
   // Navigation state
-  const [activePage, setActivePage] = useState<Page>('Play');
-  const [pageProps, setPageProps] = useState<PageProps>({});
-
-  const navigate = useCallback((page: Page, props: PageProps = {}) => {
-    setActivePage(page);
-    setPageProps(props);
-  }, []);
+  const [currentPage, setCurrentPage] = useState('play');
 
   // Modal state
   const [isLaunchModalOpen, setIsLaunchModalOpen] = useState(false);
 
-  const openLaunchModal = useCallback(() => {
-    setIsLaunchModalOpen(true);
-  }, []);
-
-  const closeLaunchModal = useCallback(() => {
-    setIsLaunchModalOpen(false);
-  }, []);
-
-  // Progress state
-  const [progress, setProgress] = useState(0);
-
   // Phase 2.1: Pre-launch flush hook
   const { register, unregister, executeAll } = usePreLaunchFlush();
 
-  // Launch hook (Phase 2.2: uses useLaunchException internally)
+  // Phase 2.2: Launch hook with integrated useLaunchException
   const {
     launch,
     isLaunching,
-    setIsLaunching,
     launchError,
     clearLaunchError,
     gameExitError,
     clearGameExitError,
   } = useInstanceLaunch();
 
-  // Task manager
-  const { tasks, pause, resume, cancel } = useTaskManager();
+  // Task management
+  const { tasks } = useTaskManager();
 
-  // UI state flags (for display only, not for orchestration)
-  const javaVersions = data.javaVersions ?? [];
-  const selectedInstanceArray = useMemo(
-    () => (data.selectedInstance ? [data.selectedInstance] : []),
-    [data.selectedInstance]
+  /**
+   * Phase 2.1 / 5.1: startLaunching boundary strengthened.
+   * 
+   * This function ONLY:
+   * 1. Clears UI state (modals, errors)
+   * 2. Calls useInstanceLaunch.launch() with pre-built options
+   * 
+   * ALL diagnosis happens in useLaunchButton.onClick BEFORE this is called.
+   */
+  const startLaunching = useCallback(
+    async (options: LaunchOptions) => {
+      setIsLaunchModalOpen(false);
+      clearGameExitError();
+      clearLaunchError();
+
+      try {
+        await launch(options);
+      } catch (e) {
+        console.error('AppContext: Launch error', e);
+      }
+    },
+    [launch, clearGameExitError, clearLaunchError]
   );
 
-  const { instruction, loading: fixingVersion } = useInstanceVersionInstall(
-    data.selectedInstance?.path ?? '',
-    selectedInstanceArray,
-    javaVersions
-  );
-
-  const needsInstall = !!instruction;
-
-  // Derive aggregate progress for UI (Phase 3 will move to useTasks)
+  /**
+   * Task progress aggregation.
+   * 
+   * Phase 2.1 / 5.1 NOTE: This remains in AppContext temporarily.
+   * Per roadmap: "After useTasks exists, remove aggregate progress derivations."
+   * This is deferred to Phase 3 implementation.
+   */
   const launchProgress = useMemo(() => {
     const activeTasks = tasks.filter((t) => t.state === TaskState.Running);
     if (activeTasks.length === 0) return 0;
@@ -80,82 +147,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return totalProgress / activeTasks.length;
   }, [tasks]);
 
-  useEffect(() => {
-    setProgress(launchProgress);
-  }, [launchProgress]);
-
-  // Sync isLaunching with task presence
-  useEffect(() => {
-    const hasActiveTasks = tasks.some((t) => t.state === TaskState.Running);
-    if (hasActiveTasks && !isLaunching) {
-      setIsLaunching(true);
-    } else if (!hasActiveTasks && isLaunching) {
-      const timeout = setTimeout(() => {
-        if (progress === 0) setIsLaunching(false);
-      }, 1500);
-      return () => clearTimeout(timeout);
-    }
-  }, [tasks, isLaunching, setIsLaunching, progress]);
-
-  // Phase 2.1 / 5.1: Strengthened AppContext.startLaunching
-  // ONLY builds LaunchOptions and calls launch - NO diagnosis
-  const startLaunching = useCallback(
-    async (options: LaunchOptions) => {
-      setIsLaunchModalOpen(false);
-      clearGameExitError();
-      clearLaunchError();
-
-      try {
-        await launch(options);
-      } catch (e) {
-        console.error('AppContext: Launch error:', e);
-      }
-    },
-    [launch, clearGameExitError, clearLaunchError]
-  );
-
-  const completeLaunching = useCallback(() => {
-    setIsLaunching(false);
-    setProgress(0);
-  }, [setIsLaunching]);
-
   const value: AppContextType = {
     // Navigation
-    activePage,
-    pageProps,
-    navigate,
+    currentPage,
+    setCurrentPage,
 
-    // Modals
+    // Modal state
     isLaunchModalOpen,
-    openLaunchModal,
-    closeLaunchModal,
+    setIsLaunchModalOpen,
 
-    // Progress
-    progress,
-
-    // Launch (Phase 2 refactored)
+    // Launch orchestration
     startLaunching,
-    completeLaunching,
     isLaunching,
+
+    // Pre-launch flush (Phase 2.1)
+    registerPreLaunchFlush: register,
+    unregisterPreLaunchFlush: unregister,
+
+    // Launch errors (Phase 2.2)
     launchError,
     clearLaunchError,
     gameExitError,
     clearGameExitError,
 
-    // UI state flags
-    needsInstall,
-    fixingVersion,
-
-    // Phase 2.1: Pre-launch flush
-    registerPreLaunchFlush: register,
-    unregisterPreLaunchFlush: unregister,
-    executePreLaunchFlush: executeAll,
-
-    // Tasks
+    // Task management
     tasks,
-    pauseTask: pause,
-    resumeTask: resume,
-    cancelTask: cancel,
+    launchProgress,
+
+    // Phase 2.1 / 5.1: REMOVED diagnosis state
+    // needsInstall (REMOVED)
+    // fixingVersion (REMOVED)
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

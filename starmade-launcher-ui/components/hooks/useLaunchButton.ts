@@ -1,75 +1,79 @@
-import { useState, useCallback, useMemo } from 'react';
-import { useApp } from '../../contexts/AppContext';
-import { useData } from '../../contexts/DataContext';
+import { useCallback, useMemo } from 'react';
+import { LaunchOptions } from '@xmcl/runtime-api';
 import { useUserDiagnose } from './useUserDiagnose';
 import { useInstanceVersionInstall } from './useInstanceVersionInstall';
 import { useInstanceVersionDiagnose } from './useInstanceVersionDiagnose';
 import { useInstanceJava } from './useInstanceJava';
 import { useInstanceJavaDiagnose } from './useInstanceJavaDiagnose';
 import { useResolvedJavaForInstance } from './useResolvedJavaForInstance';
-import { LaunchOptions } from '@xmcl/runtime-api';
+import { useInstanceFilesDiagnose } from './useInstanceFilesDiagnose';
 
-export interface LaunchButtonState {
-  text: string;
-  color: 'primary' | 'secondary' | 'danger' | 'warning';
-  disabled: boolean;
-  onClick: () => Promise<void>;
-  isLoading: boolean;
-}
-
-export function useLaunchButton(): LaunchButtonState {
-  const {
-    isLaunching,
-    startLaunching,
-    setIsLaunchModalOpen,
-    executePreLaunchFlush, // Phase 2.1: NEW
-  } = useApp();
-
-  // FIX: useData returns the context directly, do not destructure { data }
-  const data = useData();
-
-  // Phase 2.1: Move diagnosis hooks FROM AppContext TO here
-  // User diagnosis
-  const { issue: userIssue, fix: fixUser } = useUserDiagnose();
-
-  // Version diagnosis
-  const selectedInstanceArray = useMemo(
-    () => (data.selectedInstance ? [data.selectedInstance] : []),
-    [data.selectedInstance]
+/**
+ * Phase 2.1: Launch button orchestration hook.
+ * Mirrors Vue's launchButton.ts composable with full click sequence:
+ * 1. Execute pre-launch flush (autosave, etc.)
+ * 2. Check user diagnosis
+ * 3. Check version diagnosis
+ * 4. Check file diagnosis (NEW - matches Vue line 172)
+ * 5. Check Java diagnosis
+ * 6. Build LaunchOptions and call startLaunching
+ * 
+ * This hook owns ALL launch orchestration logic. AppContext.startLaunching
+ * only receives pre-built LaunchOptions and calls launch.
+ */
+export function useLaunchButton(
+  data: any,
+  executePreLaunchFlush: () => Promise<void>,
+  startLaunching: (options: LaunchOptions) => Promise<void>,
+  setIsLaunchModalOpen: (open: boolean) => void,
+  isLaunching: boolean,
+  globalSettings: any,
+  javaVersions: any[]
+) {
+  // Step 2: User diagnosis
+  const { issue: userIssue, fixUser } = useUserDiagnose(
+    data.user,
+    data.selectedInstance
   );
-  const javaVersions = data.javaVersions ?? [];
-  
-  const {
-    instruction,
-    fix: fixVersion,
-    loading: fixingVersion,
-  } = useInstanceVersionInstall(
+
+  // Step 3: Version diagnosis
+  const { instruction, install: fixVersion, loading: fixingVersion } = useInstanceVersionInstall(
     data.selectedInstance?.path ?? '',
-    selectedInstanceArray,
+    data.instances,
     javaVersions
   );
-
   const versionIssues = useInstanceVersionDiagnose(instruction);
 
-  // Java diagnosis
-  const { status: javaStatus } = useInstanceJava(data.selectedInstance, javaVersions);
+  // Step 4: File diagnosis (NEW - Phase 2.1 critical finding)
+  const { issue: fileIssue, fixFiles } = useInstanceFilesDiagnose(
+    data.selectedInstance?.path
+  );
+
+  // Step 5: Java diagnosis
+  const { status: javaStatus } = useInstanceJava(
+    data.selectedInstance,
+    javaVersions
+  );
   const { issue: javaIssue } = useInstanceJavaDiagnose(javaStatus);
 
-  // Resolved Java (for LaunchOptions building)
-  const { status: resolvedJava } = useResolvedJavaForInstance(
+  // Get resolved Java for launch options
+  const { resolved: resolvedJava } = useResolvedJavaForInstance(
     data.selectedInstance,
     undefined,
     javaVersions
   );
 
-  // Phase 2.1: Full click sequence ownership
+  /**
+   * Full launch click sequence.
+   * Mirrors Vue's launchButton.ts onClick (lines 147-179).
+   */
   const onClick = useCallback(async () => {
-    // Guard: already launching or fixing
-    if (isLaunching || fixingVersion) return;
+    if (isLaunching || fixingVersion) {
+      return;
+    }
 
     try {
-      // Step 1: Execute pre-launch flush (autosave, etc.)
-      // Phase 2.1: NEW - was missing in original implementation
+      // Step 1: Pre-launch flush (autosave, etc.)
       await executePreLaunchFlush();
 
       // Step 2: User diagnosis
@@ -78,58 +82,60 @@ export function useLaunchButton(): LaunchButtonState {
         return;
       }
 
-      // Step 3: Version/asset diagnosis
+      // Step 3: Version diagnosis
       if (instruction) {
         await fixVersion();
-        // After fix, launch with corrected version
-        // Fall through to Step 5 (build options and launch)
+        return;
       }
 
-      // Step 4: Java diagnosis
+      // Step 4: File diagnosis (NEW - matches Vue line 172)
+      if (fileIssue) {
+        await fixFiles();
+        return;
+      }
+
+      // Step 5: Java diagnosis
       if (javaIssue) {
-        // Show modal for user to select Java
         setIsLaunchModalOpen(true);
         return;
       }
 
-      // Step 5: All checks passed - build LaunchOptions and launch
-      // Phase 2.1: Build options HERE, not in AppContext
+      // Step 6: Build LaunchOptions and launch
       if (!data.selectedInstance) {
         console.error('useLaunchButton: No instance selected');
         return;
       }
 
-      if (!data.activeAccount) {
-        console.error('useLaunchButton: No active account');
-        return;
-      }
+      const instance = data.selectedInstance;
 
-      if (!resolvedJava?.finalJavaPath) {
-        console.error('useLaunchButton: No Java path resolved');
-        setIsLaunchModalOpen(true);
-        return;
-      }
-
-      const versionToLaunch =
-        data.selectedInstance.version ?? data.selectedInstance.runtime?.minecraft;
-
-      if (!versionToLaunch) {
-        console.error('useLaunchButton: No version to launch');
-        return;
-      }
-
+      // Build launch options from instance data
       const options: LaunchOptions = {
-        version: versionToLaunch,
-        gameDirectory: data.selectedInstance.path,
-        user: data.activeAccount,
-        java: resolvedJava.finalJavaPath,
-        maxMemory: data.selectedInstance.maxMemory,
-        minMemory: data.selectedInstance.minMemory,
-        vmOptions: data.selectedInstance.vmOptions,
-        mcOptions: data.selectedInstance.mcOptions,
+        instancePath: instance.path,
+        version: instance.version || instance.runtime.minecraft,
+        gameProfile: data.user?.selectedProfile ?? {
+          id: '',
+          name: 'Player',
+        },
+        java: resolvedJava?.javaPath ?? instance.java ?? '',
+        minMemory: instance.minMemory ?? globalSettings?.globalMinMemory,
+        maxMemory: instance.maxMemory ?? globalSettings?.globalMaxMemory,
+        vmOptions: instance.vmOptions ?? globalSettings?.globalVmOptions ?? [],
+        mcOptions: instance.mcOptions ?? globalSettings?.globalMcOptions ?? [],
+        hideLauncher: instance.hideLauncher ?? globalSettings?.globalHideLauncher ?? false,
+        showLog: instance.showLog ?? globalSettings?.globalShowLog ?? false,
+        server: instance.server ?? undefined,
+        fastLaunch: instance.fastLaunch ?? globalSettings?.globalFastLaunch ?? false,
+        disableAuthlibInjector:
+          instance.disableAuthlibInjector ??
+          globalSettings?.globalDisableAuthlibInjector ??
+          false,
+        disableElybyAuthlib:
+          instance.disableElyByAuthlib ??
+          globalSettings?.globalDisableElyByAuthlib ??
+          false,
       };
 
-      // Phase 2.1 / 5.1: Call AppContext with PRE-BUILT options
+      // Delegate to AppContext.startLaunching
       await startLaunching(options);
     } catch (e) {
       console.error('useLaunchButton: Click sequence failed', e);
@@ -137,49 +143,47 @@ export function useLaunchButton(): LaunchButtonState {
   }, [
     isLaunching,
     fixingVersion,
-    executePreLaunchFlush, // Phase 2.1: NEW dependency
+    executePreLaunchFlush,
     userIssue,
     fixUser,
     instruction,
     fixVersion,
+    fileIssue,
+    fixFiles,
     javaIssue,
     setIsLaunchModalOpen,
     data.selectedInstance,
-    data.activeAccount,
+    data.user,
     resolvedJava,
+    globalSettings,
     startLaunching,
   ]);
 
-  // Button facade (UI state)
-  const disabled = useMemo(() => {
-    return (
-      !data.selectedInstance ||
-      !data.activeAccount ||
-      isLaunching ||
-      fixingVersion
-    );
-  }, [data.selectedInstance, data.activeAccount, isLaunching, fixingVersion]);
-
+  // Button display state
   const text = useMemo(() => {
     if (isLaunching) return 'Launching...';
     if (fixingVersion) return 'Installing...';
     if (userIssue) return 'Login Required';
-    if (instruction) return 'Install Required';
+    if (versionIssues.length > 0) return 'Install Required';
+    if (fileIssue) return 'Repair Required';
     if (javaIssue) return 'Java Issue';
     return 'Launch';
-  }, [isLaunching, fixingVersion, userIssue, instruction, javaIssue]);
+  }, [isLaunching, fixingVersion, userIssue, versionIssues, fileIssue, javaIssue]);
 
-  const color = useMemo<'primary' | 'secondary' | 'danger' | 'warning'>(() => {
-    if (javaIssue) return 'danger';
-    if (instruction || userIssue) return 'warning';
-    return 'primary';
-  }, [javaIssue, instruction, userIssue]);
+  const disabled = useMemo(() => {
+    return isLaunching || fixingVersion || !data.selectedInstance;
+  }, [isLaunching, fixingVersion, data.selectedInstance]);
 
   return {
-    text,
-    color,
-    disabled,
     onClick,
-    isLoading: isLaunching || fixingVersion,
+    text,
+    disabled,
+    isLaunching,
+    // Expose diagnosis state for UI rendering (not for orchestration)
+    hasUserIssue: !!userIssue,
+    hasVersionIssue: !!instruction,
+    hasFileIssue: !!fileIssue,
+    hasJavaIssue: !!javaIssue,
+    versionIssues,
   };
 }
