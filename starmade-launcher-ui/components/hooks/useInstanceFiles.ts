@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { InstanceInstallServiceKey, InstanceInstallStatus } from '@xmcl/runtime-api';
 import { useService } from './useService';
 import { InstanceFile } from '@xmcl/instance';
@@ -12,11 +12,6 @@ export interface ChecksumErrorFile {
 /**
  * Hook to monitor instance file installation status.
  * Mirrors Vue's instanceFiles.ts composable.
- * 
- * Tracks:
- * - Pending file installations (mods, configs, resource packs)
- * - Checksum validation errors
- * - Unzip extraction errors
  */
 export function useInstanceFiles(instancePath: string | undefined) {
   const { watchInstanceInstall, resumeInstanceInstall } = useService(InstanceInstallServiceKey);
@@ -35,30 +30,35 @@ export function useInstanceFiles(instancePath: string | undefined) {
   const resumingInstallRef = useRef<Record<string, boolean>>({});
 
   // Subscribe to instance install status
-  React.useEffect(() => {
+  useEffect(() => {
     if (!instancePath) {
       setInstanceFileStatus(null);
       return;
     }
 
+    let mounted = true;
     setIsValidating(true);
-    const subscription = watchInstanceInstall(instancePath);
 
-    // Assuming watchInstanceInstall returns an observable or similar
-    // Adapt based on actual API signature
-    const unsubscribe = subscription.subscribe?.({
-      next: (status: InstanceInstallStatus) => {
-        setInstanceFileStatus(status);
+    // watchInstanceInstall returns a Promise<SharedState>
+    watchInstanceInstall(instancePath)
+      .then((sharedState) => {
+        if (!mounted) return;
+        
+        // Access the current value from shared state
+        setInstanceFileStatus(sharedState as any);
         setIsValidating(false);
-      },
-      error: (err: any) => {
+
+        // TODO: Subscribe to updates if SharedState supports it
+        // For now, just set initial value
+      })
+      .catch((err) => {
+        if (!mounted) return;
         setError(err);
         setIsValidating(false);
-      },
-    });
+      });
 
     return () => {
-      unsubscribe?.();
+      mounted = false;
     };
   }, [instancePath, watchInstanceInstall]);
 
@@ -73,7 +73,7 @@ export function useInstanceFiles(instancePath: string | undefined) {
   );
 
   const unresolvedFiles = useMemo(
-    () => instanceFileStatus?.unresolvedFiles,
+    () => (instanceFileStatus as any)?.unresolvedFiles,
     [instanceFileStatus]
   );
 

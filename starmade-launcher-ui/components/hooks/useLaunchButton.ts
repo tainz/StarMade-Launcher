@@ -10,13 +10,6 @@ import { useInstanceFilesDiagnose } from './useInstanceFilesDiagnose';
 
 /**
  * Phase 2.1: Launch button orchestration hook.
- * Mirrors Vue's launchButton.ts composable with full 6-step click sequence:
- * 1. Execute pre-launch flush (autosave, etc.)
- * 2. Check user diagnosis (login required)
- * 3. Check version diagnosis (version jar/libs/assets missing)
- * 4. Check file diagnosis (instance-specific files: mods, configs, unzip errors)
- * 5. Check Java diagnosis (incompatible Java version)
- * 6. Build LaunchOptions and call startLaunching
  */
 export function useLaunchButton(
   data: any,
@@ -27,21 +20,21 @@ export function useLaunchButton(
   globalSettings: any,
   javaVersions: any[]
 ) {
-  // Step 2: User diagnosis
-  const { issue: userIssue, fixUser } = useUserDiagnose(
+  // Step 2: User diagnosis - FIX: Use 'fix' not 'fixUser'
+  const { issue: userIssue, fix: fixUser } = useUserDiagnose(
     data.user,
     data.selectedInstance
   );
 
-  // Step 3: Version diagnosis (global version files)
-  const { instruction, install: fixVersion, loading: fixingVersion } = useInstanceVersionInstall(
+  // Step 3: Version diagnosis - FIX: Use 'fix' not 'install'
+  const { instruction, fix: fixVersion, loading: fixingVersion } = useInstanceVersionInstall(
     data.selectedInstance?.path ?? '',
     data.instances,
     javaVersions
   );
   const versionIssues = useInstanceVersionDiagnose(instruction);
 
-  // Step 4: File diagnosis (instance-specific files)
+  // Step 4: File diagnosis
   const { issue: fileIssue, fixFiles, loading: fixingFiles } = useInstanceFilesDiagnose(
     data.selectedInstance?.path
   );
@@ -53,24 +46,20 @@ export function useLaunchButton(
   );
   const { issue: javaIssue } = useInstanceJavaDiagnose(javaStatus);
 
-  // Get resolved Java for launch options
-  const { resolved: resolvedJava } = useResolvedJavaForInstance(
+  // Get resolved Java - FIX: Use 'status' not 'resolved'
+  const { status: resolvedJava } = useResolvedJavaForInstance(
     data.selectedInstance,
     undefined,
     javaVersions
   );
 
-  /**
-   * Full launch click sequence.
-   * Mirrors Vue's launchButton.ts onClick (lines 147-179).
-   */
   const onClick = useCallback(async () => {
     if (isLaunching || fixingVersion || fixingFiles) {
       return;
     }
 
     try {
-      // Step 1: Pre-launch flush (autosave, etc.)
+      // Step 1: Pre-launch flush
       await executePreLaunchFlush();
 
       // Step 2: User diagnosis
@@ -79,14 +68,13 @@ export function useLaunchButton(
         return;
       }
 
-      // Step 3: Version diagnosis (global version files)
+      // Step 3: Version diagnosis
       if (instruction) {
         await fixVersion();
         return;
       }
 
-      // Step 4: File diagnosis (instance-specific files)
-      // CRITICAL: This is the missing step from the original audit
+      // Step 4: File diagnosis
       if (fileIssue) {
         await fixFiles();
         return;
@@ -106,8 +94,9 @@ export function useLaunchButton(
 
       const instance = data.selectedInstance;
 
+      // FIX: Use correct LaunchOptions interface (no 'instancePath', use 'path')
       const options: LaunchOptions = {
-        instancePath: instance.path,
+        path: instance.path, // Changed from instancePath
         version: instance.version || instance.runtime.minecraft,
         gameProfile: data.user?.selectedProfile ?? {
           id: '',
@@ -156,7 +145,6 @@ export function useLaunchButton(
     startLaunching,
   ]);
 
-  // Button display state
   const text = useMemo(() => {
     if (isLaunching) return 'Launching...';
     if (fixingVersion) return 'Installing Version...';
@@ -177,7 +165,6 @@ export function useLaunchButton(
     text,
     disabled,
     isLaunching,
-    // Expose diagnosis state for UI rendering (not for orchestration)
     hasUserIssue: !!userIssue,
     hasVersionIssue: !!instruction,
     hasFileIssue: !!fileIssue,
