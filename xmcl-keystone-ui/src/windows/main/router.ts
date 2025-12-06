@@ -25,14 +25,27 @@ import StoreEntry from '@/views/StoreEntry.vue'
 import StoreProjectCurseforge from '@/views/StoreProjectCurseforge.vue'
 import StoreProjectFeedTheBeast from '@/views/StoreProjectFeedTheBeast.vue'
 import StoreProjectModrinth from '@/views/StoreProjectModrinth.vue'
+// Phase 1: StarMade UI imports
+import Play from '@/views/Play.vue'
 import Vue from 'vue'
 import Router from 'vue-router'
 
 Vue.use(Router)
 export const router = new Router({
   routes: [
+    // Phase 1: StarMade Play route (redirect root to /play)
     {
       path: '/',
+      redirect: '/play'
+    },
+    {
+      path: '/play',
+      name: 'Play',
+      component: Play
+    },
+    // Original routes preserved below
+    {
+      path: '/home',
       component: HomeLayout,
       children: [
         {
