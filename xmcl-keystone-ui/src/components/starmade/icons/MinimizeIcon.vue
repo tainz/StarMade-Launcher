@@ -1,17 +1,21 @@
+<!-- src/components/starmade/icons/MinimizeIcon.vue -->
 <script setup lang="ts">
 interface Props {
-  iconClass?: string;
+  class?: string
 }
-withDefaults(defineProps<Props>(), { iconClass: 'w-5 h-5' });
+
+const props = withDefaults(defineProps<Props>(), {
+  class: 'w-5 h-5'
+})
 </script>
 
 <template>
-  <svg 
-    :class="iconClass"
+  <svg
+    :class="props.class"
     viewBox="0 0 24 24"
     fill="currentColor"
     xmlns="http://www.w3.org/2000/svg"
   >
-    <path d="M6 19h12v2H6z"/>
+    <path d="M6 19h12v2H6z" />
   </svg>
 </template>

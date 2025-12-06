@@ -26,7 +26,7 @@ import StoreProjectCurseforge from '@/views/StoreProjectCurseforge.vue'
 import StoreProjectFeedTheBeast from '@/views/StoreProjectFeedTheBeast.vue'
 import StoreProjectModrinth from '@/views/StoreProjectModrinth.vue'
 // Phase 1: StarMade UI imports
-import Play from '@/views/Play.vue'
+import Play from '@/views/starmade/Play.vue'
 import Vue from 'vue'
 import Router from 'vue-router'
 

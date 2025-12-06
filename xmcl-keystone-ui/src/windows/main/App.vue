@@ -1,10 +1,5 @@
-<script setup lang="ts">
-import Header from '@/components/starmade/layout/Header.vue';
-import Footer from '@/components/starmade/layout/Footer.vue';
-</script>
-
 <template>
-  <div class="h-screen w-screen flex flex-col bg-starmade-bg overflow-hidden font-sans text-white">
+  <div class="h-screen w-screen flex flex-col bg-starmade-bg overflow-hidden">
     <Header />
     
     <main class="flex-1 overflow-hidden p-6">
@@ -15,26 +10,32 @@ import Footer from '@/components/starmade/layout/Footer.vue';
   </div>
 </template>
 
+<script lang="ts">
+import { defineComponent } from 'vue'
+import Header from '@/components/starmade/layout/Header.vue'
+import Footer from '@/components/starmade/layout/Footer.vue'
+
+export default defineComponent({
+  name: 'App',
+  components: {
+    Header,
+    Footer,
+  },
+})
+</script>
+
 <style>
+/* Import Tailwind base styles */
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
 
-/* Custom scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-}
+/* Global font imports */
+@import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@700&family=Inter:wght@400;500;600&display=swap');
 
-::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.2);
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
 }
 </style>
